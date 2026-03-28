@@ -61,8 +61,8 @@ if [ "$role" = "console" ]; then
   echo "Configuring console host..."
   read -p "Manager port (default 9000): " mgr_port
   mgr_port=${mgr_port:-9000}
-  read -p "Manager hostname (default localhost): " mgr_host
-  mgr_host=${mgr_host:-localhost}
+  read -p "Manager bind address (default 0.0.0.0): " mgr_host
+  mgr_host=${mgr_host:-0.0.0.0}
   
   cat > "$CONFIG_DIR/local-config.yaml" <<EOF
 role: console
