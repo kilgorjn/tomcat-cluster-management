@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from console.models.cluster import Cluster
 from console.models.deployment import DeployRequest

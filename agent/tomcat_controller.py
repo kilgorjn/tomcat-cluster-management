@@ -6,7 +6,9 @@ a unified orchestration layer.
 
 import asyncio
 import logging
+import os
 import time
+import xml.etree.ElementTree as ET
 from typing import Any, Dict, Optional
 
 from agent.health_checker import HealthChecker
@@ -48,7 +50,7 @@ class TomcatController:
         self.war_deployer = WarDeployer(tomcat_root=tomcat_root)
         self.health_checker = HealthChecker(timeout=health_check_timeout)
 
-        # Instance port mapping loaded from config
+        # Instance port mapping populated from config or discovery
         self._instance_ports: Dict[str, int] = {}
         self._health_endpoints: Dict[str, str] = {}
 
@@ -212,10 +214,51 @@ class TomcatController:
     def discover_instances(self) -> list[str]:
         """Discover Tomcat instances on this node.
 
+        Also populates instance ports by parsing each instance's
+        server.xml for the HTTP Connector port.
+
         Returns:
             List of app_id strings.
         """
-        return self.process_manager.discover_instances()
+        instances = self.process_manager.discover_instances()
+        for app_id in instances:
+            if app_id not in self._instance_ports:
+                port = self._discover_port_from_server_xml(app_id)
+                if port is not None:
+                    self._instance_ports[app_id] = port
+                    logger.debug(
+                        "Discovered port %d for %s from server.xml", port, app_id
+                    )
+        return instances
+
+    def _discover_port_from_server_xml(self, app_id: str) -> Optional[int]:
+        """Parse server.xml to find the HTTP Connector port for an instance.
+
+        Args:
+            app_id: Application identifier.
+
+        Returns:
+            HTTP port integer or None if not found.
+        """
+        server_xml = os.path.join(self._tomcat_root, app_id, "conf", "server.xml")
+        if not os.path.exists(server_xml):
+            return None
+
+        try:
+            tree = ET.parse(server_xml)
+            root = tree.getroot()
+            for connector in root.iter("Connector"):
+                protocol = connector.get("protocol", "HTTP/1.1")
+                if "HTTP" in protocol.upper() or protocol == "":
+                    port_str = connector.get("port")
+                    if port_str is not None:
+                        return int(port_str)
+        except (ET.ParseError, ValueError, OSError) as exc:
+            logger.warning(
+                "Failed to parse server.xml for %s: %s", app_id, exc
+            )
+
+        return None
 
     async def _wait_for_health(
         self, app_id: str, port: int, endpoint: str

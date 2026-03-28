@@ -9,7 +9,7 @@ from console.models.cluster import Cluster
 from console.models.deployment import PolicyUpdateRequest
 from console.services.node_manager import NodeManager
 from console.services.policy_service import PolicyService
-from shared.constants import AGENT_OFFLINE, STATUS_RUNNING, STATUS_STOPPED
+from shared.constants import AGENT_OFFLINE, HEALTH_UNHEALTHY, STATUS_RUNNING, STATUS_STOPPED
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,17 @@ async def update_policy(
 
     # Persist to YAML
     config_root = _get_config_root()
-    policy_service.persist_policy(cluster_id, config_root)
+    persisted = policy_service.persist_policy(cluster_id, config_root)
+    if not persisted:
+        logger.error(
+            "Failed to persist policy for cluster %s to config root %s",
+            cluster_id,
+            config_root,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to persist policy for cluster: {cluster_id}",
+        )
 
     return {"cluster_id": cluster_id, "policy": updated.model_dump()}
 
@@ -184,7 +194,7 @@ async def cluster_status(cluster_id: str) -> Dict[str, Any]:
             continue
         if tc.status == STATUS_RUNNING:
             running += 1
-            if tc.health_status == "unhealthy":
+            if tc.health_status == HEALTH_UNHEALTHY:
                 unhealthy += 1
         elif tc.status == STATUS_STOPPED:
             stopped += 1

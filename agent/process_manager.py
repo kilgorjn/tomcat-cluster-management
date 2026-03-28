@@ -82,12 +82,6 @@ class ProcessManager:
 
         return None
 
-    def _write_pid(self, app_id: str, pid: int) -> None:
-        """Write PID to file."""
-        pid_file = self._pid_file(app_id)
-        with open(pid_file, "w") as f:
-            f.write(str(pid))
-
     def _remove_pid(self, app_id: str) -> None:
         """Remove PID file."""
         pid_file = self._pid_file(app_id)
@@ -257,10 +251,21 @@ class ProcessManager:
         try:
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
-            pass
+            # Process already gone
+            self._remove_pid(app_id)
+            return True
 
-        self._remove_pid(app_id)
-        return True
+        # Verify the process actually exited after SIGKILL with a short wait
+        kill_deadline = time.time() + 5
+        while time.time() < kill_deadline:
+            if not psutil.pid_exists(pid):
+                logger.info("Tomcat %s stopped after SIGKILL", app_id)
+                self._remove_pid(app_id)
+                return True
+            time.sleep(0.5)
+
+        logger.error("Tomcat %s still running after SIGKILL", app_id)
+        return False
 
     def discover_instances(self) -> list[str]:
         """Discover Tomcat instances by scanning the tomcat_root directory.

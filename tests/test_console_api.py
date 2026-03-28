@@ -91,10 +91,13 @@ def _build_test_app() -> FastAPI:
     @asynccontextmanager
     async def test_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """Inject test services into routers."""
+        config_root = "/tmp/tcm-test"
+        os.makedirs(os.path.join(config_root, "clusters"), exist_ok=True)
+
         clusters.router.clusters = sample_clusters  # type: ignore[attr-defined]
         clusters.router.node_manager = node_manager  # type: ignore[attr-defined]
         clusters.router.policy_service = policy_service  # type: ignore[attr-defined]
-        clusters.router.config_root = "/tmp/tcm-test"  # type: ignore[attr-defined]
+        clusters.router.config_root = config_root  # type: ignore[attr-defined]
 
         deployments.router.clusters = sample_clusters  # type: ignore[attr-defined]
         deployments.router.deployment_service = deployment_service  # type: ignore[attr-defined]

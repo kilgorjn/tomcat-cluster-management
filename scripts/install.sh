@@ -14,7 +14,18 @@ INSTALL_DIR="/opt/tcm"
 CONFIG_DIR="/etc/tcm"
 LOG_DIR="/var/log/tcm"
 
-# 1. Create directories
+# 1. Create tcm system user and group
+if ! getent group tcm > /dev/null 2>&1; then
+  echo "Creating tcm group..."
+  groupadd --system tcm
+fi
+
+if ! getent passwd tcm > /dev/null 2>&1; then
+  echo "Creating tcm system user..."
+  useradd --system --gid tcm --no-create-home --shell /usr/sbin/nologin tcm
+fi
+
+# 2. Create directories
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$LOG_DIR"

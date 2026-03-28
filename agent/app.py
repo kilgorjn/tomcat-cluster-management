@@ -104,9 +104,16 @@ def _get_controller() -> TomcatController:
     return _controller
 
 
+def _validate_node_id(node_id: str) -> None:
+    """Validate that the requested node_id matches this agent's node."""
+    if node_id != _node_id:
+        raise HTTPException(status_code=404, detail=f"Node not found: {node_id}")
+
+
 @app.get("/nodes/{node_id}/status")
 async def get_node_status(node_id: str) -> Dict[str, Any]:
     """Return status of all Tomcat instances on this node."""
+    _validate_node_id(node_id)
     controller = _get_controller()
 
     instances = controller.discover_instances()
@@ -137,6 +144,7 @@ async def get_node_status(node_id: str) -> Dict[str, Any]:
 @app.get("/nodes/{node_id}/tomcats/{app_id}/status")
 async def get_tomcat_status(node_id: str, app_id: str) -> Dict[str, Any]:
     """Return status of a specific Tomcat instance."""
+    _validate_node_id(node_id)
     controller = _get_controller()
     return controller.get_status(app_id)
 
@@ -144,6 +152,7 @@ async def get_tomcat_status(node_id: str, app_id: str) -> Dict[str, Any]:
 @app.post("/nodes/{node_id}/tomcats/{app_id}/start")
 async def start_tomcat(node_id: str, app_id: str) -> Dict[str, Any]:
     """Start a specific Tomcat instance."""
+    _validate_node_id(node_id)
     controller = _get_controller()
     return await controller.start(app_id)
 
@@ -151,6 +160,7 @@ async def start_tomcat(node_id: str, app_id: str) -> Dict[str, Any]:
 @app.post("/nodes/{node_id}/tomcats/{app_id}/stop")
 async def stop_tomcat(node_id: str, app_id: str) -> Dict[str, Any]:
     """Stop a specific Tomcat instance."""
+    _validate_node_id(node_id)
     controller = _get_controller()
     return await controller.stop(app_id)
 
@@ -158,6 +168,7 @@ async def stop_tomcat(node_id: str, app_id: str) -> Dict[str, Any]:
 @app.post("/nodes/{node_id}/tomcats/{app_id}/restart")
 async def restart_tomcat(node_id: str, app_id: str) -> Dict[str, Any]:
     """Restart a specific Tomcat instance."""
+    _validate_node_id(node_id)
     controller = _get_controller()
     return await controller.restart(app_id)
 
@@ -172,6 +183,7 @@ async def deploy_tomcat(
     - Content-Type: application/octet-stream
     - X-Deploy-Version: version string header
     """
+    _validate_node_id(node_id)
     controller = _get_controller()
 
     version = request.headers.get("X-Deploy-Version", "unknown")

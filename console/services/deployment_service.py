@@ -29,6 +29,7 @@ class DeploymentService:
         self._node_manager = node_manager
         self._max_parallel_nodes = max_parallel_nodes
         self._deployments: Dict[str, DeploymentStatus] = {}
+        self._lock = asyncio.Lock()
 
     def get_deployment_status(
         self, deployment_id: str
@@ -91,14 +92,37 @@ class DeploymentService:
             len(node_ids),
         )
 
-        # Launch background deployment task
+        # Launch background deployment task with top-level error handling
         asyncio.create_task(
-            self._execute_deployment(
+            self._safe_execute_deployment(
                 deployment, cluster, node_ids, war_bytes, version
             )
         )
 
         return deployment
+
+    async def _safe_execute_deployment(
+        self,
+        deployment: DeploymentStatus,
+        cluster: Cluster,
+        node_ids: List[str],
+        war_bytes: bytes,
+        version: str,
+    ) -> None:
+        """Wrapper that catches exceptions so the task never fails silently."""
+        try:
+            await self._execute_deployment(
+                deployment, cluster, node_ids, war_bytes, version
+            )
+        except Exception as exc:
+            logger.exception(
+                "Deployment %s failed with unexpected error: %s",
+                deployment.deployment_id,
+                exc,
+            )
+            deployment.status = DEPLOY_FAILED
+            deployment.errors.append(f"Unexpected error: {exc}")
+            deployment.completed_at = utc_now()
 
     async def _execute_deployment(
         self,
@@ -130,7 +154,8 @@ class DeploymentService:
                     node_id, cluster.app_id, war_bytes, version
                 )
                 if result and result.get("status") != "error":
-                    deployment.nodes_completed += 1
+                    async with self._lock:
+                        deployment.nodes_completed += 1
                     logger.info(
                         "Node %s completed (%d/%d)",
                         node_id,

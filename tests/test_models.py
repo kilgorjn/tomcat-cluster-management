@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -256,7 +257,7 @@ class TestDeployRequest:
         assert req.version == "v1.2.3"
 
     def test_validation_requires_fields(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             DeployRequest()  # type: ignore[call-arg]
 
 

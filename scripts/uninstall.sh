@@ -1,6 +1,12 @@
 #!/bin/bash
 # Stops services, removes systemd units, leaves config/data intact (backup first!)
 
+# Detect if running as root
+if [ "$EUID" -ne 0 ]; then
+  echo "This script must be run as root"
+  exit 1
+fi
+
 read -p "This will uninstall TCM. Continue? (y/n): " confirm
 if [ "$confirm" != "y" ]; then exit 0; fi
 
