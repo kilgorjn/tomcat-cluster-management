@@ -1,0 +1,23 @@
+# /etc/tcm/local-config.yaml (on agent host, e.g., node-1)
+role: agent
+version: 1.0
+
+agent:
+  node_id: node-1
+  port: 9001
+  tomcat_root: /opt/tomcats
+  log_dir: /var/log/tcm
+
+logging:
+  level: INFO
+  format: json
+
+tomcat:
+  graceful_stop_timeout: 30  # seconds
+  startup_timeout: 60        # seconds
+  health_check_timeout: 10
+  max_concurrent_deploys: 3  # per node
+
+process_management:
+  pid_dir: /var/run/tcm
+  enable_monitoring: true    # Monitor process CPU, memory

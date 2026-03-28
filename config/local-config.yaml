@@ -1,0 +1,27 @@
+# TCM Local Configuration
+# Generated at install time - modify as needed
+# See console/config/console.yaml.example or agent/config/agent.yaml.example
+
+role: console
+version: 1.0
+
+console:
+  host: 0.0.0.0
+  port: 9000
+  config_root: /etc/tcm
+  log_dir: /var/log/tcm
+
+logging:
+  level: INFO
+  format: json
+
+policy_enforcement:
+  enabled: true
+  check_interval: 30
+  node_timeout: 10
+
+deployment:
+  staging_dir: /opt/tcm/staging
+  max_parallel_nodes: 10
+  health_check_timeout: 10
+  startup_timeout: 60
