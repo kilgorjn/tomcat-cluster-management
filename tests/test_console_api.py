@@ -2,6 +2,7 @@
 
 import sys
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -91,7 +92,8 @@ def _build_test_app() -> FastAPI:
     @asynccontextmanager
     async def test_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """Inject test services into routers."""
-        config_root = "/tmp/tcm-test"
+        tmpdir = tempfile.mkdtemp(prefix="tcm-test-")
+        config_root = tmpdir
         os.makedirs(os.path.join(config_root, "clusters"), exist_ok=True)
 
         clusters.router.clusters = sample_clusters  # type: ignore[attr-defined]

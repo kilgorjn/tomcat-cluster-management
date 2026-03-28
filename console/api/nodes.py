@@ -45,17 +45,11 @@ async def get_node_status(node_id: str) -> Dict[str, Any]:
     # Poll agent for live status
     status = await node_manager.poll_node_status(node_id)
     if status is not None:
-        return status
+        # Normalize agent response to match console schema
+        return _normalize_node_status(node, status)
 
     # Agent unreachable - return cached state
-    return {
-        "node_id": node.node_id,
-        "agent_status": node.agent_status,
-        "tomcats": {
-            app_id: tc.model_dump()
-            for app_id, tc in node.tomcats.items()
-        },
-    }
+    return _normalize_node_status(node, None)
 
 
 @router.get("/nodes/{node_id}/tomcats/{app_id}/status")
@@ -69,7 +63,8 @@ async def get_tomcat_status(node_id: str, app_id: str) -> Dict[str, Any]:
     # Try to poll agent
     status = await node_manager.poll_node_status(node_id)
     if status and "tomcats" in status and app_id in status["tomcats"]:
-        return status["tomcats"][app_id]
+        agent_tc = status["tomcats"][app_id]
+        return _normalize_tomcat_status(app_id, agent_tc)
 
     # Fall back to cached state
     tc = node.tomcats.get(app_id)
@@ -79,6 +74,47 @@ async def get_tomcat_status(node_id: str, app_id: str) -> Dict[str, Any]:
             detail=f"Tomcat {app_id} not found on node {node_id}",
         )
     return tc.model_dump()
+
+
+def _normalize_node_status(
+    node: Any, agent_status: Any
+) -> Dict[str, Any]:
+    """Normalize node status into a consistent response schema.
+
+    Whether the data comes from a live agent poll or cached state,
+    the response always has the same shape.
+    """
+    tomcats: Dict[str, Any] = {}
+
+    if agent_status and "tomcats" in agent_status:
+        # Use live agent data but normalize each tomcat entry
+        for tc_id, tc_data in agent_status["tomcats"].items():
+            tomcats[tc_id] = _normalize_tomcat_status(tc_id, tc_data)
+    else:
+        # Use cached state from console
+        for tc_id, tc in node.tomcats.items():
+            tomcats[tc_id] = tc.model_dump()
+
+    return {
+        "node_id": node.node_id,
+        "agent_status": node.agent_status,
+        "tomcats": tomcats,
+    }
+
+
+def _normalize_tomcat_status(
+    app_id: str, data: Any
+) -> Dict[str, Any]:
+    """Normalize a single tomcat status entry to a consistent schema."""
+    if isinstance(data, dict):
+        return {
+            "app_id": data.get("app_id", app_id),
+            "status": data.get("status", "unknown"),
+            "pid": data.get("pid"),
+            "health": data.get("health", data.get("health_status", "unknown")),
+            "war_deployed": data.get("war_deployed"),
+        }
+    return {"app_id": app_id, "status": "unknown", "pid": None, "health": "unknown"}
 
 
 @router.post("/nodes/{node_id}/tomcats/{app_id}/start")

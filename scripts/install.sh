@@ -93,9 +93,9 @@ fi
 
 # 7. Install systemd services
 echo "Installing systemd services..."
-sudo cp systemd/tcm-console.service /etc/systemd/system/
-sudo cp systemd/tcm-agent.service /etc/systemd/system/
-sudo systemctl daemon-reload
+cp systemd/tcm-console.service /etc/systemd/system/
+cp systemd/tcm-agent.service /etc/systemd/system/
+systemctl daemon-reload
 
 # 8. Set permissions
 chown -R tcm:tcm "$INSTALL_DIR" "$CONFIG_DIR" "$LOG_DIR" 2>/dev/null || true

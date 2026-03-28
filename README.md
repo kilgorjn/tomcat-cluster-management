@@ -45,7 +45,7 @@ A centralized orchestration and lifecycle management system for production Tomca
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - pip (Python package manager)
 - systemd (for service management)
 
@@ -118,6 +118,7 @@ CONFIG_PATH=agent/config/agent.yaml.example python -m agent.app
 | `GET` | `/nodes/{id}/tomcats/{app}/status` | Specific Tomcat status |
 | `POST` | `/nodes/{id}/tomcats/{app}/start` | Start Tomcat |
 | `POST` | `/nodes/{id}/tomcats/{app}/stop` | Stop Tomcat |
+| `POST` | `/nodes/{id}/tomcats/{app}/restart` | Restart Tomcat |
 | `POST` | `/nodes/{id}/tomcats/{app}/deploy` | Deploy WAR file |
 | `GET` | `/health` | Agent health check |
 

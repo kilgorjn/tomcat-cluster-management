@@ -110,7 +110,7 @@ class PolicyService:
             cluster_data.pop("previous_version", None)
 
             with open(config_path, "w") as f:
-                yaml.dump(cluster_data, f, default_flow_style=False, sort_keys=False)
+                yaml.safe_dump(cluster_data, f, default_flow_style=False, sort_keys=False)
 
             logger.info("Persisted policy for cluster %s to %s", cluster_id, config_path)
             return True

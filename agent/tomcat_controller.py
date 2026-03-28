@@ -20,6 +20,7 @@ from shared.constants import (
     GRACEFUL_STOP_TIMEOUT,
     HEALTH_CHECK_TIMEOUT,
     HEALTH_HEALTHY,
+    HEALTH_UNKNOWN,
     STARTUP_TIMEOUT,
     STATUS_RUNNING,
     STATUS_STOPPED,
@@ -187,7 +188,7 @@ class TomcatController:
             "status": "deployed",
             "app_id": app_id,
             "version": version,
-            "health": start_result.get("health", "unknown"),
+            "health": start_result.get("health", HEALTH_UNKNOWN),
             "pid": start_result.get("pid"),
         }
 
@@ -284,4 +285,4 @@ class TomcatController:
         logger.warning(
             "Tomcat %s did not become healthy within %ds", app_id, self._startup_timeout
         )
-        return "unknown"
+        return HEALTH_UNKNOWN

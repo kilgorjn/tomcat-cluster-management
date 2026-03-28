@@ -51,7 +51,7 @@ class WarDeployer:
                 shutil.move(src, dst)
                 logger.debug("Rotated backup: %s -> %s", src, dst)
 
-        # Move current WAR to backup slot 1
+        # Copy current WAR to backup slot 1 (original is overwritten by deploy)
         war = self._war_path(app_id)
         if os.path.exists(war):
             backup1 = self._backup_path(app_id, 1)

@@ -119,4 +119,4 @@ def save_yaml(data: Dict[str, Any], file_path: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(path, "w") as f:
-        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

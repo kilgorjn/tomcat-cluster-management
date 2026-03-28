@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -112,6 +113,82 @@ class TestAgentControlEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "error"
+
+
+class TestServerXmlParsing:
+    """Tests for server.xml port discovery logic."""
+
+    def _write_server_xml(self, tomcat_root: str, app_id: str, content: str) -> None:
+        conf_dir = os.path.join(tomcat_root, app_id, "conf")
+        os.makedirs(conf_dir, exist_ok=True)
+        with open(os.path.join(conf_dir, "server.xml"), "w") as f:
+            f.write(content)
+
+    def _make_controller(self, tomcat_root: str) -> "TomcatController":
+        from agent.tomcat_controller import TomcatController
+        return TomcatController(
+            tomcat_root=tomcat_root,
+            pid_dir=tempfile.mkdtemp(),
+        )
+
+    def test_standard_http_connector(self):
+        """Standard server.xml with a single HTTP connector."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._write_server_xml(tmpdir, "app-a", '<?xml version="1.0" encoding="UTF-8"?>\n<Server port="8005" shutdown="SHUTDOWN">\n  <Service name="Catalina">\n    <Connector port="8080" protocol="HTTP/1.1" connectionTimeout="20000" />\n    <Connector port="8009" protocol="AJP/1.3" />\n  </Service>\n</Server>')
+            ctrl = self._make_controller(tmpdir)
+            port = ctrl._discover_port_from_server_xml("app-a")
+            assert port == 8080
+
+    def test_multiple_http_connectors_returns_first(self):
+        """Multiple HTTP connectors — should return the first one."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._write_server_xml(tmpdir, "app-a", '<?xml version="1.0" encoding="UTF-8"?>\n<Server port="8005" shutdown="SHUTDOWN">\n  <Service name="Catalina">\n    <Connector port="8080" protocol="HTTP/1.1" />\n    <Connector port="8443" protocol="HTTP/1.1" scheme="https" />\n  </Service>\n</Server>')
+            ctrl = self._make_controller(tmpdir)
+            port = ctrl._discover_port_from_server_xml("app-a")
+            assert port == 8080
+
+    def test_https_connector_skipped(self):
+        """HTTPS-only connector with non-HTTP protocol is skipped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._write_server_xml(tmpdir, "app-a", '<?xml version="1.0" encoding="UTF-8"?>\n<Server port="8005" shutdown="SHUTDOWN">\n  <Service name="Catalina">\n    <Connector port="8009" protocol="AJP/1.3" />\n  </Service>\n</Server>')
+            ctrl = self._make_controller(tmpdir)
+            port = ctrl._discover_port_from_server_xml("app-a")
+            assert port is None
+
+    def test_missing_protocol_defaults_to_http(self):
+        """Connector without protocol attribute defaults to HTTP."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._write_server_xml(tmpdir, "app-a", '<?xml version="1.0" encoding="UTF-8"?>\n<Server port="8005" shutdown="SHUTDOWN">\n  <Service name="Catalina">\n    <Connector port="9090" />\n  </Service>\n</Server>')
+            ctrl = self._make_controller(tmpdir)
+            port = ctrl._discover_port_from_server_xml("app-a")
+            assert port == 9090
+
+    def test_missing_server_xml(self):
+        """No server.xml file returns None."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctrl = self._make_controller(tmpdir)
+            port = ctrl._discover_port_from_server_xml("nonexistent")
+            assert port is None
+
+    def test_malformed_xml(self):
+        """Malformed XML returns None without crashing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._write_server_xml(tmpdir, "app-a", "<not valid xml")
+            ctrl = self._make_controller(tmpdir)
+            port = ctrl._discover_port_from_server_xml("app-a")
+            assert port is None
+
+    def test_discover_instances_populates_ports(self):
+        """discover_instances() populates port map from server.xml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create instance dirs with server.xml
+            self._write_server_xml(tmpdir, "app-a", '<?xml version="1.0" encoding="UTF-8"?>\n<Server port="8005" shutdown="SHUTDOWN">\n  <Service name="Catalina">\n    <Connector port="8080" protocol="HTTP/1.1" />\n  </Service>\n</Server>')
+            # Also create webapps so it counts as a valid instance
+            os.makedirs(os.path.join(tmpdir, "app-a", "webapps"), exist_ok=True)
+            ctrl = self._make_controller(tmpdir)
+            instances = ctrl.discover_instances()
+            assert "app-a" in instances
+            assert ctrl.get_instance_port("app-a") == 8080
 
 
 class TestAgentDeployEndpoint:
