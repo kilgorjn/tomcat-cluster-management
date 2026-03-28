@@ -126,10 +126,10 @@ app = FastAPI(
 )
 
 # Include routers
-app.include_router(clusters.router)
-app.include_router(deployments.router)
-app.include_router(nodes.router)
-app.include_router(monitoring.router)
+app.include_router(clusters.router, prefix="/api")
+app.include_router(deployments.router, prefix="/api")
+app.include_router(nodes.router, prefix="/api")
+app.include_router(monitoring.router, prefix="/api")
 
 
 if __name__ == "__main__":
