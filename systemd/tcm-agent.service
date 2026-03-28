@@ -1,0 +1,23 @@
+[Unit]
+Description=TCM Node Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/tcm
+
+ExecStart=/opt/tcm/venv/bin/python agent/app.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tcm-agent
+
+Environment="PYTHONUNBUFFERED=1"
+Environment="CONFIG_PATH=/etc/tcm/local-config.yaml"
+
+[Install]
+WantedBy=multi-user.target

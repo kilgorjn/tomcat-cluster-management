@@ -1,0 +1,24 @@
+# /etc/tcm/local-config.yaml (on console host)
+role: console
+version: 1.0
+
+console:
+  host: 0.0.0.0              # Listen on all interfaces
+  port: 9000
+  config_root: /etc/tcm      # Where cluster configs live
+  log_dir: /var/log/tcm
+
+logging:
+  level: INFO
+  format: json               # Structured logging for parsing
+
+policy_enforcement:
+  enabled: true
+  check_interval: 30         # seconds
+  node_timeout: 10           # seconds for node response
+
+deployment:
+  staging_dir: /opt/tcm/staging
+  max_parallel_nodes: 10     # Deploy to N nodes in parallel
+  health_check_timeout: 10
+  startup_timeout: 60
