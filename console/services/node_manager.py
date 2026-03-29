@@ -165,7 +165,7 @@ class NodeManager:
                         node.tomcats[app_id].last_health_check = utc_now()
 
                 return data
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
             logger.warning("Failed to poll node %s: %s", node_id, exc)
             node.agent_status = AGENT_OFFLINE
             return None
@@ -194,7 +194,7 @@ class NodeManager:
                 response = await client.post(url)
                 response.raise_for_status()
                 return response.json()
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
             logger.error(
                 "Failed to send %s to %s/%s: %s", action, node_id, app_id, exc
             )
@@ -245,7 +245,7 @@ class NodeManager:
                 )
                 response.raise_for_status()
                 return response.json()
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
             logger.error("Failed to deploy to %s/%s: %s", node_id, app_id, exc)
             node.agent_status = AGENT_OFFLINE
             return None

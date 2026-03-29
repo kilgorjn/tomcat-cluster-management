@@ -76,10 +76,13 @@ def load_cluster_configs(config_root: Optional[str] = None) -> List[Dict[str, An
         return clusters
 
     for yaml_file in sorted(clusters_dir.glob("*.yaml")):
-        with open(yaml_file, "r") as f:
-            cluster_config = yaml.safe_load(f)
-            if cluster_config:
-                clusters.append(cluster_config)
+        try:
+            with open(yaml_file, "r") as f:
+                cluster_config = yaml.safe_load(f)
+                if cluster_config:
+                    clusters.append(cluster_config)
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Failed to parse cluster config %s: %s", yaml_file, exc)
 
     return clusters
 
@@ -139,10 +142,13 @@ def load_node_configs(config_root: Optional[str] = None) -> List[Dict[str, Any]]
         return nodes
 
     for yaml_file in sorted(nodes_dir.glob("*.yaml")):
-        with open(yaml_file, "r") as f:
-            node_config = yaml.safe_load(f)
-            if node_config:
-                nodes.append(node_config)
+        try:
+            with open(yaml_file, "r") as f:
+                node_config = yaml.safe_load(f)
+                if node_config:
+                    nodes.append(node_config)
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Failed to parse node config %s: %s", yaml_file, exc)
 
     return nodes
 

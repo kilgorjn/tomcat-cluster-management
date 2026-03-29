@@ -131,7 +131,7 @@ async def delete_cluster(cluster_id: str) -> Dict[str, Any]:
             config_root = _get_config_root()
             clusters_dir = Path(config_root) / "clusters"
             yaml_path = clusters_dir / f"{cluster_id}.yaml"
-            if not str(yaml_path.resolve()).startswith(str(clusters_dir.resolve())):
+            if not yaml_path.resolve().is_relative_to(clusters_dir.resolve()):
                 raise OSError(f"Refusing to delete outside config directory: {yaml_path}")
             if yaml_path.exists():
                 yaml_path.unlink()
