@@ -1,10 +1,13 @@
 """Cluster management API router for TCM Console."""
 
 import logging
+import os
 from typing import Any, Dict, List
 
+import yaml
 from fastapi import APIRouter, HTTPException
 
+from console.models.application import Application
 from console.models.cluster import Cluster
 from console.models.deployment import PolicyUpdateRequest
 from console.services.node_manager import NodeManager
@@ -31,6 +34,91 @@ def _get_policy_service() -> PolicyService:
 
 def _get_config_root() -> str:
     return router.config_root  # type: ignore[attr-defined]
+
+
+def _get_applications() -> Dict[str, Application]:
+    return router.applications  # type: ignore[attr-defined]
+
+
+def _persist_cluster(cluster: Cluster, config_root: str) -> None:
+    clusters_dir = os.path.join(config_root, "clusters")
+    os.makedirs(clusters_dir, exist_ok=True)
+    yaml_path = os.path.join(clusters_dir, f"{cluster.cluster_id}.yaml")
+    with open(yaml_path, "w") as f:
+        yaml.safe_dump(cluster.model_dump(), f, default_flow_style=False, sort_keys=False)
+
+
+@router.post("/clusters", status_code=201)
+async def create_cluster(cluster: Cluster) -> Dict[str, Any]:
+    """Create a new cluster. Returns 409 if cluster_id already exists, 400 if app_id not found."""
+    clusters = _get_clusters()
+    if cluster.cluster_id in clusters:
+        raise HTTPException(status_code=409, detail=f"Cluster already exists: {cluster.cluster_id}")
+
+    applications = _get_applications()
+    if cluster.app_id not in applications:
+        raise HTTPException(status_code=400, detail=f"Application not found: {cluster.app_id}")
+
+    clusters[cluster.cluster_id] = cluster
+
+    try:
+        _persist_cluster(cluster, _get_config_root())
+    except (OSError, yaml.YAMLError) as exc:
+        del clusters[cluster.cluster_id]
+        logger.error("Failed to persist cluster %s: %s", cluster.cluster_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
+
+    logger.info("Created cluster: %s", cluster.cluster_id)
+    return cluster.model_dump()
+
+
+@router.put("/clusters/{cluster_id}")
+async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
+    """Update an existing cluster. Returns 404 if not found, 400 if app_id not found."""
+    clusters = _get_clusters()
+    if cluster_id not in clusters:
+        raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
+
+    applications = _get_applications()
+    if cluster.app_id not in applications:
+        raise HTTPException(status_code=400, detail=f"Application not found: {cluster.app_id}")
+
+    cluster.cluster_id = cluster_id
+    previous = clusters[cluster_id]
+    clusters[cluster_id] = cluster
+
+    try:
+        _persist_cluster(cluster, _get_config_root())
+    except (OSError, yaml.YAMLError) as exc:
+        clusters[cluster_id] = previous
+        logger.error("Failed to persist cluster %s: %s", cluster_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
+
+    logger.info("Updated cluster: %s", cluster_id)
+    return cluster.model_dump()
+
+
+@router.delete("/clusters/{cluster_id}")
+async def delete_cluster(cluster_id: str) -> Dict[str, Any]:
+    """Delete a cluster. Returns 404 if not found."""
+    clusters = _get_clusters()
+    if cluster_id not in clusters:
+        raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
+
+    removed = clusters.pop(cluster_id)
+
+    try:
+        config_root = _get_config_root()
+        yaml_path = os.path.join(config_root, "clusters", f"{cluster_id}.yaml")
+        if os.path.exists(yaml_path):
+            os.remove(yaml_path)
+    except OSError as exc:
+        clusters[cluster_id] = removed
+        logger.error("Failed to remove cluster file %s: %s", cluster_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to remove cluster from disk")
+
+    logger.info("Deleted cluster: %s", cluster_id)
+    return {"detail": f"Cluster deleted: {cluster_id}"}
 
 
 @router.get("/clusters")

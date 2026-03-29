@@ -1,10 +1,14 @@
 """Node management API router for TCM Console."""
 
 import logging
+import os
 from typing import Any, Dict
 
+import yaml
 from fastapi import APIRouter, HTTPException
 
+from console.models.cluster import Cluster
+from console.models.node import Node
 from console.services.node_manager import NodeManager
 
 logger = logging.getLogger(__name__)
@@ -14,6 +18,115 @@ router = APIRouter(tags=["nodes"])
 
 def _get_node_manager() -> NodeManager:
     return router.node_manager  # type: ignore[attr-defined]
+
+
+def _get_clusters() -> Dict[str, Cluster]:
+    return router.clusters  # type: ignore[attr-defined]
+
+
+def _get_config_root() -> str:
+    return router.config_root  # type: ignore[attr-defined]
+
+
+def _persist_node(node: Node, config_root: str) -> None:
+    nodes_dir = os.path.join(config_root, "nodes")
+    os.makedirs(nodes_dir, exist_ok=True)
+    yaml_path = os.path.join(nodes_dir, f"{node.node_id}.yaml")
+    data = {
+        "node_id": node.node_id,
+        "hostname": node.hostname,
+        "ip_address": node.ip_address,
+        "agent_port": node.agent_port,
+    }
+    with open(yaml_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+@router.post("/nodes", status_code=201)
+async def create_node(node: Node) -> Dict[str, Any]:
+    """Create a new node. Returns 409 if node_id already exists."""
+    node_manager = _get_node_manager()
+    if node_manager.get_node(node.node_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Node already exists: {node.node_id}")
+
+    node_manager._nodes[node.node_id] = node
+
+    try:
+        _persist_node(node, _get_config_root())
+    except (OSError, yaml.YAMLError) as exc:
+        del node_manager._nodes[node.node_id]
+        logger.error("Failed to persist node %s: %s", node.node_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to persist node to disk")
+
+    logger.info("Created node: %s", node.node_id)
+    return {
+        "node_id": node.node_id,
+        "hostname": node.hostname,
+        "ip_address": node.ip_address,
+        "agent_port": node.agent_port,
+        "agent_status": node.agent_status,
+    }
+
+
+@router.put("/nodes/{node_id}")
+async def update_node(node_id: str, node: Node) -> Dict[str, Any]:
+    """Update an existing node. Returns 404 if not found."""
+    node_manager = _get_node_manager()
+    if node_manager.get_node(node_id) is None:
+        raise HTTPException(status_code=404, detail=f"Node not found: {node_id}")
+
+    node.node_id = node_id
+    previous = node_manager._nodes[node_id]
+    node_manager._nodes[node_id] = node
+
+    try:
+        _persist_node(node, _get_config_root())
+    except (OSError, yaml.YAMLError) as exc:
+        node_manager._nodes[node_id] = previous
+        logger.error("Failed to persist node %s: %s", node_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to persist node to disk")
+
+    logger.info("Updated node: %s", node_id)
+    return {
+        "node_id": node.node_id,
+        "hostname": node.hostname,
+        "ip_address": node.ip_address,
+        "agent_port": node.agent_port,
+        "agent_status": node.agent_status,
+    }
+
+
+@router.delete("/nodes/{node_id}")
+async def delete_node(node_id: str) -> Dict[str, Any]:
+    """Delete a node. Returns 404 if not found, 409 if referenced by a cluster."""
+    node_manager = _get_node_manager()
+    if node_manager.get_node(node_id) is None:
+        raise HTTPException(status_code=404, detail=f"Node not found: {node_id}")
+
+    clusters = _get_clusters()
+    referencing_clusters = [
+        c.cluster_id for c in clusters.values() if node_id in c.nodes
+    ]
+    if referencing_clusters:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Node {node_id} is referenced by clusters: {referencing_clusters}",
+        )
+
+    removed = node_manager._nodes.pop(node_id)
+
+    try:
+        config_root = _get_config_root()
+        yaml_path = os.path.join(config_root, "nodes", f"{node_id}.yaml")
+        if os.path.exists(yaml_path):
+            os.remove(yaml_path)
+    except OSError as exc:
+        node_manager._nodes[node_id] = removed
+        logger.error("Failed to remove node file %s: %s", node_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to remove node from disk")
+
+    logger.info("Deleted node: %s", node_id)
+    return {"detail": f"Node deleted: {node_id}"}
 
 
 @router.get("/nodes")
