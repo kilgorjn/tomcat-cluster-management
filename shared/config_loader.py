@@ -148,14 +148,29 @@ def load_node_configs(config_root: Optional[str] = None) -> List[Dict[str, Any]]
 
 
 def save_yaml(data: Dict[str, Any], file_path: str) -> None:
-    """Save data to a YAML file.
+    """Save data to a YAML file atomically via temp-file + os.replace.
+
+    Writes to a sibling temp file, fsyncs, then replaces the target so a
+    crash mid-write never leaves a truncated or corrupt file.
 
     Args:
         data: Dictionary to serialize.
         file_path: Destination file path.
     """
+    import os
+    import tempfile
+
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(path, "w") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+    content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".yaml.tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        os.unlink(tmp_path)
+        raise

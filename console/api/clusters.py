@@ -2,13 +2,10 @@
 
 import asyncio
 import logging
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 
-import yaml
 from fastapi import APIRouter, HTTPException
 
 from console.models.application import Application
@@ -16,6 +13,7 @@ from console.models.cluster import Cluster
 from console.models.deployment import PolicyUpdateRequest
 from console.services.node_manager import NodeManager
 from console.services.policy_service import PolicyService
+from shared.config_loader import save_yaml
 from shared.constants import AGENT_OFFLINE, HEALTH_UNHEALTHY, STATUS_RUNNING, STATUS_STOPPED
 
 logger = logging.getLogger(__name__)
@@ -55,21 +53,10 @@ def _get_applications() -> Dict[str, Application]:
 
 def _persist_cluster(cluster: Cluster, config_root: str) -> None:
     clusters_dir = Path(config_root) / "clusters"
-    clusters_dir.mkdir(parents=True, exist_ok=True)
     target = clusters_dir / f"{cluster.cluster_id}.yaml"
     if not str(target.resolve()).startswith(str(clusters_dir.resolve())):
         raise OSError(f"Refusing to write outside config directory: {target}")
-    content = yaml.safe_dump(cluster.model_dump(), default_flow_style=False, sort_keys=False)
-    fd, tmp_path = tempfile.mkstemp(dir=clusters_dir, suffix=".yaml.tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, target)
-    except Exception:
-        os.unlink(tmp_path)
-        raise
+    save_yaml(cluster.model_dump(), str(target))
 
 
 @router.post("/clusters", status_code=201)

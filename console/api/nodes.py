@@ -2,18 +2,16 @@
 
 import asyncio
 import logging
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Any, Dict
 
-import yaml
 from fastapi import APIRouter, HTTPException
 
 from console.models.cluster import Cluster
 from console.models.node import Node
 from console.services.node_manager import NodeManager
+from shared.config_loader import save_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +41,6 @@ def _get_config_root() -> str:
 
 def _persist_node(node: Node, config_root: str) -> None:
     nodes_dir = Path(config_root) / "nodes"
-    nodes_dir.mkdir(parents=True, exist_ok=True)
     target = nodes_dir / f"{node.node_id}.yaml"
     if not str(target.resolve()).startswith(str(nodes_dir.resolve())):
         raise OSError(f"Refusing to write outside config directory: {target}")
@@ -53,17 +50,7 @@ def _persist_node(node: Node, config_root: str) -> None:
         "ip_address": node.ip_address,
         "agent_port": node.agent_port,
     }
-    content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
-    fd, tmp_path = tempfile.mkstemp(dir=nodes_dir, suffix=".yaml.tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, target)
-    except Exception:
-        os.unlink(tmp_path)
-        raise
+    save_yaml(data, str(target))
 
 
 def _node_response(node: Node) -> Dict[str, Any]:
