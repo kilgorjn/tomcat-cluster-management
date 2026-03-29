@@ -39,13 +39,11 @@ _config_root: str = DEFAULT_CONFIG_ROOT
 
 
 def _build_application(cfg: dict) -> Application:
-    """Build an Application model from a raw config dict."""
-    return Application(
-        app_id=cfg["app_id"],
-        name=cfg["name"],
-        war_filename=cfg["war_filename"],
-        context_path=cfg["context_path"],
-    )
+    """Build an Application model from a raw config dict.
+
+    Uses Application(**cfg) so Pydantic validates all required fields.
+    """
+    return Application(**cfg)
 
 
 def _build_cluster(cfg: dict) -> Cluster:
@@ -86,8 +84,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load application configs
     app_configs = load_application_configs(_config_root)
     for cfg in app_configs:
-        application = _build_application(cfg)
-        _applications[application.app_id] = application
+        try:
+            application = _build_application(cfg)
+            _applications[application.app_id] = application
+        except (KeyError, ValueError) as exc:
+            logger.warning("Skipping malformed application config %s: %s", cfg.get("app_id", "<unknown>"), exc)
     logger.info("Loaded %d application configurations", len(_applications))
 
     # Load cluster configs
@@ -96,6 +97,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         cluster = _build_cluster(cfg)
         _clusters[cluster.cluster_id] = cluster
     logger.info("Loaded %d cluster configurations", len(_clusters))
+
+    # Validate referential integrity: warn about clusters referencing unknown applications
+    for cluster in _clusters.values():
+        if cluster.app_id not in _applications:
+            logger.warning(
+                "Cluster %s references unknown application: %s",
+                cluster.cluster_id,
+                cluster.app_id,
+            )
 
     # Load node configs and initialize NodeManager
     node_timeout = config.get("policy_enforcement", {}).get("node_timeout", 10)

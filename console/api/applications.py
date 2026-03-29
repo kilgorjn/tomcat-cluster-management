@@ -80,6 +80,9 @@ async def update_application(app_id: str, application: Application) -> Applicati
     if app_id not in applications:
         raise HTTPException(status_code=404, detail=f"Application not found: {app_id}")
 
+    # Ensure the application's app_id matches the path parameter to avoid inconsistencies
+    application.app_id = app_id
+
     previous = applications[app_id]
     applications[app_id] = application
 

@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-logger = logging.getLogger(__name__)
-
 from shared.constants import DEFAULT_CONFIG_PATH, DEFAULT_CONFIG_ROOT
+
+logger = logging.getLogger(__name__)
 
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
