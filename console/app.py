@@ -13,6 +13,7 @@ from typing import AsyncGenerator
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 # Add project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -165,6 +166,11 @@ app.include_router(deployments.router, prefix="/api")
 app.include_router(nodes.router, prefix="/api")
 app.include_router(monitoring.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
+
+# Serve Vue frontend static files (built output)
+_frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+if os.path.isdir(_frontend_dist):
+    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
 
 
 if __name__ == "__main__":
