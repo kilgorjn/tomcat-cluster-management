@@ -1,7 +1,11 @@
 """Cluster management API router for TCM Console."""
 
+import asyncio
 import logging
 import os
+import re
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
@@ -17,6 +21,15 @@ from shared.constants import AGENT_OFFLINE, HEALTH_UNHEALTHY, STATUS_RUNNING, ST
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["clusters"])
+
+_cluster_lock = asyncio.Lock()
+
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_id(value: str, label: str) -> None:
+    if not _SAFE_ID_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}: must match [A-Za-z0-9_-]+")
 
 
 def _get_clusters() -> Dict[str, Cluster]:
@@ -41,32 +54,46 @@ def _get_applications() -> Dict[str, Application]:
 
 
 def _persist_cluster(cluster: Cluster, config_root: str) -> None:
-    clusters_dir = os.path.join(config_root, "clusters")
-    os.makedirs(clusters_dir, exist_ok=True)
-    yaml_path = os.path.join(clusters_dir, f"{cluster.cluster_id}.yaml")
-    with open(yaml_path, "w") as f:
-        yaml.safe_dump(cluster.model_dump(), f, default_flow_style=False, sort_keys=False)
+    clusters_dir = Path(config_root) / "clusters"
+    clusters_dir.mkdir(parents=True, exist_ok=True)
+    target = clusters_dir / f"{cluster.cluster_id}.yaml"
+    if not str(target.resolve()).startswith(str(clusters_dir.resolve())):
+        raise OSError(f"Refusing to write outside config directory: {target}")
+    content = yaml.safe_dump(cluster.model_dump(), default_flow_style=False, sort_keys=False)
+    fd, tmp_path = tempfile.mkstemp(dir=clusters_dir, suffix=".yaml.tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, target)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
 
 
 @router.post("/clusters", status_code=201)
 async def create_cluster(cluster: Cluster) -> Dict[str, Any]:
     """Create a new cluster. Returns 409 if cluster_id already exists, 400 if app_id not found."""
-    clusters = _get_clusters()
-    if cluster.cluster_id in clusters:
-        raise HTTPException(status_code=409, detail=f"Cluster already exists: {cluster.cluster_id}")
+    _validate_id(cluster.cluster_id, "cluster_id")
 
-    applications = _get_applications()
-    if cluster.app_id not in applications:
-        raise HTTPException(status_code=400, detail=f"Application not found: {cluster.app_id}")
+    async with _cluster_lock:
+        clusters = _get_clusters()
+        if cluster.cluster_id in clusters:
+            raise HTTPException(status_code=409, detail=f"Cluster already exists: {cluster.cluster_id}")
 
-    clusters[cluster.cluster_id] = cluster
+        applications = _get_applications()
+        if cluster.app_id not in applications:
+            raise HTTPException(status_code=400, detail=f"Application not found: {cluster.app_id}")
 
-    try:
-        _persist_cluster(cluster, _get_config_root())
-    except (OSError, yaml.YAMLError) as exc:
-        del clusters[cluster.cluster_id]
-        logger.error("Failed to persist cluster %s: %s", cluster.cluster_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
+        clusters[cluster.cluster_id] = cluster
+
+        try:
+            _persist_cluster(cluster, _get_config_root())
+        except (OSError, yaml.YAMLError) as exc:
+            del clusters[cluster.cluster_id]
+            logger.error("Failed to persist cluster %s: %s", cluster.cluster_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
 
     logger.info("Created cluster: %s", cluster.cluster_id)
     return cluster.model_dump()
@@ -75,47 +102,56 @@ async def create_cluster(cluster: Cluster) -> Dict[str, Any]:
 @router.put("/clusters/{cluster_id}")
 async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
     """Update an existing cluster. Returns 404 if not found, 400 if app_id not found."""
-    clusters = _get_clusters()
-    if cluster_id not in clusters:
-        raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
+    _validate_id(cluster_id, "cluster_id")
 
-    applications = _get_applications()
-    if cluster.app_id not in applications:
-        raise HTTPException(status_code=400, detail=f"Application not found: {cluster.app_id}")
+    async with _cluster_lock:
+        clusters = _get_clusters()
+        if cluster_id not in clusters:
+            raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
 
-    cluster.cluster_id = cluster_id
-    previous = clusters[cluster_id]
-    clusters[cluster_id] = cluster
+        applications = _get_applications()
+        if cluster.app_id not in applications:
+            raise HTTPException(status_code=400, detail=f"Application not found: {cluster.app_id}")
 
-    try:
-        _persist_cluster(cluster, _get_config_root())
-    except (OSError, yaml.YAMLError) as exc:
-        clusters[cluster_id] = previous
-        logger.error("Failed to persist cluster %s: %s", cluster_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
+        updated = cluster.model_copy(update={"cluster_id": cluster_id})
+        previous = clusters[cluster_id]
+        clusters[cluster_id] = updated
+
+        try:
+            _persist_cluster(updated, _get_config_root())
+        except (OSError, yaml.YAMLError) as exc:
+            clusters[cluster_id] = previous
+            logger.error("Failed to persist cluster %s: %s", cluster_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
 
     logger.info("Updated cluster: %s", cluster_id)
-    return cluster.model_dump()
+    return updated.model_dump()
 
 
 @router.delete("/clusters/{cluster_id}")
 async def delete_cluster(cluster_id: str) -> Dict[str, Any]:
     """Delete a cluster. Returns 404 if not found."""
-    clusters = _get_clusters()
-    if cluster_id not in clusters:
-        raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
+    _validate_id(cluster_id, "cluster_id")
 
-    removed = clusters.pop(cluster_id)
+    async with _cluster_lock:
+        clusters = _get_clusters()
+        if cluster_id not in clusters:
+            raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
 
-    try:
-        config_root = _get_config_root()
-        yaml_path = os.path.join(config_root, "clusters", f"{cluster_id}.yaml")
-        if os.path.exists(yaml_path):
-            os.remove(yaml_path)
-    except OSError as exc:
-        clusters[cluster_id] = removed
-        logger.error("Failed to remove cluster file %s: %s", cluster_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to remove cluster from disk")
+        removed = clusters.pop(cluster_id)
+
+        try:
+            config_root = _get_config_root()
+            clusters_dir = Path(config_root) / "clusters"
+            yaml_path = clusters_dir / f"{cluster_id}.yaml"
+            if not str(yaml_path.resolve()).startswith(str(clusters_dir.resolve())):
+                raise OSError(f"Refusing to delete outside config directory: {yaml_path}")
+            if yaml_path.exists():
+                yaml_path.unlink()
+        except OSError as exc:
+            clusters[cluster_id] = removed
+            logger.error("Failed to remove cluster file %s: %s", cluster_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to remove cluster from disk")
 
     logger.info("Deleted cluster: %s", cluster_id)
     return {"detail": f"Cluster deleted: {cluster_id}"}

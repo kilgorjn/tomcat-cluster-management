@@ -359,7 +359,7 @@ Response: {
    - (Path configurable)
 
 4. Harness: Trigger manager deployment
-   - POST /api/clusters/{cluster-id}/deploy
+   - POST /api/clusters/{cluster_id}/deploy
    - { "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/BrokerageMobileWeb-1.2.3.war",
        "version": "v1.2.3" }
 ```
@@ -583,16 +583,16 @@ worker.cluster-2.balance_workers=node-1,node-2,...
 GET /api/applications
   Return: { "applications": [{"app_id": "app-a", "name": "BrokerageMobileWeb", ...}] }
 
-GET /api/applications/{app-id}
+GET /api/applications/{app_id}
   Return: Application config
 
 POST /api/applications
   Body: { "app_id": "app-a", "name": "BrokerageMobileWeb", "war_filename": "BrokerageMobileWeb.war", "context_path": "/BMW" }
 
-PUT /api/applications/{app-id}
+PUT /api/applications/{app_id}
   Body: { "name": "...", "war_filename": "...", "context_path": "..." }
 
-DELETE /api/applications/{app-id}
+DELETE /api/applications/{app_id}
 ```
 
 #### Cluster Management
@@ -601,37 +601,37 @@ DELETE /api/applications/{app-id}
 GET /api/clusters
   Return: { "clusters": [{"cluster_id": "cluster-1", "status": "healthy", ...}] }
 
-GET /api/clusters/{cluster-id}
+GET /api/clusters/{cluster_id}
   Return: Cluster config + current state
 
 POST /api/clusters
   Body: { "cluster_id": "cluster-1", "app_id": "app-a", "nodes": ["node-1"], "policy": {...}, "deployment": {...} }
   Return: Created cluster (201). Returns 409 if cluster_id already exists, 400 if app_id not found.
 
-PUT /api/clusters/{cluster-id}
+PUT /api/clusters/{cluster_id}
   Body: { "app_id": "app-a", "nodes": [...], "policy": {...}, "deployment": {...} }
   Return: Updated cluster. Returns 404 if not found, 400 if app_id not found.
 
-DELETE /api/clusters/{cluster-id}
+DELETE /api/clusters/{cluster_id}
   Removes cluster and its YAML config file. Returns 404 if not found.
 
-POST /api/clusters/{cluster-id}/policy
+POST /api/clusters/{cluster_id}/policy
   Body: { "mode": "AUTO" | "MANUAL", "min_instances": 5, "max_instances": 10 }
 
-POST /api/clusters/{cluster-id}/stop-all
+POST /api/clusters/{cluster_id}/stop-all
   Stop all Tomcats in cluster (blocks until complete or timeout)
 
-POST /api/clusters/{cluster-id}/start-all
+POST /api/clusters/{cluster_id}/start-all
   Start Tomcats until min_instances reached
 
-GET /api/clusters/{cluster-id}/status
+GET /api/clusters/{cluster_id}/status
   Return: { "running": 8, "stopped": 2, "unhealthy": 0, "policy_mode": "AUTO" }
 ```
 
 #### Deployment
 
 ```
-POST /api/clusters/{cluster-id}/deploy
+POST /api/clusters/{cluster_id}/deploy
   Body: {
     "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/BrokerageMobileWeb-1.2.3.war",
     "version": "v1.2.3"
@@ -640,7 +640,7 @@ POST /api/clusters/{cluster-id}/deploy
   Note: war_filename and context_path are resolved from the cluster's Application config.
         The versioned source filename is stripped before the WAR is written to webapps/.
 
-GET /api/clusters/{cluster-id}/deployments/{deployment-id}
+GET /api/clusters/{cluster_id}/deployments/{deployment_id}
   Return: {
     "status": "completed" | "in_progress" | "failed",
     "version": "v1.2.3",
@@ -649,7 +649,7 @@ GET /api/clusters/{cluster-id}/deployments/{deployment-id}
     "errors": []
   }
 
-POST /api/clusters/{cluster-id}/rollback
+POST /api/clusters/{cluster_id}/rollback
   Rollback to previous WAR backup (if available)
 ```
 
@@ -663,26 +663,26 @@ POST /api/nodes
   Body: { "node_id": "node-1", "hostname": "tomcat-node-1.internal", "ip_address": "192.168.1.10", "agent_port": 9001 }
   Return: Created node (201). Returns 409 if node_id already exists.
 
-PUT /api/nodes/{node-id}
+PUT /api/nodes/{node_id}
   Body: { "hostname": "...", "ip_address": "...", "agent_port": 9001 }
   Return: Updated node. Returns 404 if not found.
 
-DELETE /api/nodes/{node-id}
+DELETE /api/nodes/{node_id}
   Removes node and its YAML config file. Returns 404 if not found, 409 if referenced by a cluster.
 
-GET /api/nodes/{node-id}/status
+GET /api/nodes/{node_id}/status
   Return: Current state of all Tomcats on node
 
-GET /api/nodes/{node-id}/tomcats/{app-id}/status
+GET /api/nodes/{node_id}/tomcats/{app-id}/status
   Return: { "status": "running", "health": "healthy", "pid": 1234 }
 ```
 
 #### Manual Control (Operations)
 
 ```
-POST /api/nodes/{node-id}/tomcats/{app-id}/start
-POST /api/nodes/{node-id}/tomcats/{app-id}/stop
-POST /api/nodes/{node-id}/tomcats/{app-id}/restart
+POST /api/nodes/{node_id}/tomcats/{app-id}/start
+POST /api/nodes/{node_id}/tomcats/{app-id}/stop
+POST /api/nodes/{node_id}/tomcats/{app-id}/restart
 ```
 
 ---
@@ -758,7 +758,7 @@ class TomcatInstance:
    - Stage: Save to `/opt/cluster-manager/staging/{cluster-id}/{app-id}/app.war`
 
 2. **Trigger TCM deployment**
-   - API call: `POST http://manager-console:9000/api/clusters/{cluster-id}/deploy`
+   - API call: `POST http://manager-console:9000/api/clusters/{cluster_id}/deploy`
    - Payload: `{ "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/BrokerageMobileWeb-1.2.3.war", "version": "v1.2.3" }`
    - TCM resolves `war_filename` and `context_path` from the cluster's Application config
    - Wait for response (polling or webhook)
