@@ -267,11 +267,12 @@ async def start_all(cluster_id: str) -> Dict[str, Any]:
             continue
 
         result = await node_manager.send_command(node_id, cluster.app_id, "start")
-        if result:
+        if result is not None:
             results.append({"node_id": node_id, "status": "started"})
             started += 1
         else:
             results.append({"node_id": node_id, "status": "error", "error": "Agent unreachable"})
+            # Continue to next node to compensate for this failure
 
     return {
         "cluster_id": cluster_id,
