@@ -56,13 +56,18 @@ async def create_application(application: Application) -> Application:
 
     applications[application.app_id] = application
 
-    # Persist to YAML
-    config_root = _get_config_root()
-    apps_dir = os.path.join(config_root, "applications")
-    os.makedirs(apps_dir, exist_ok=True)
-    yaml_path = os.path.join(apps_dir, f"{application.app_id}.yaml")
-    with open(yaml_path, "w") as f:
-        yaml.safe_dump(application.model_dump(), f, default_flow_style=False, sort_keys=False)
+    # Persist to YAML — rollback in-memory on failure
+    try:
+        config_root = _get_config_root()
+        apps_dir = os.path.join(config_root, "applications")
+        os.makedirs(apps_dir, exist_ok=True)
+        yaml_path = os.path.join(apps_dir, f"{application.app_id}.yaml")
+        with open(yaml_path, "w") as f:
+            yaml.safe_dump(application.model_dump(), f, default_flow_style=False, sort_keys=False)
+    except (OSError, yaml.YAMLError) as exc:
+        del applications[application.app_id]
+        logger.error("Failed to persist application %s: %s", application.app_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to persist application to disk")
 
     logger.info("Created application: %s", application.app_id)
     return application
@@ -75,15 +80,21 @@ async def update_application(app_id: str, application: Application) -> Applicati
     if app_id not in applications:
         raise HTTPException(status_code=404, detail=f"Application not found: {app_id}")
 
+    previous = applications[app_id]
     applications[app_id] = application
 
-    # Persist to YAML
-    config_root = _get_config_root()
-    apps_dir = os.path.join(config_root, "applications")
-    os.makedirs(apps_dir, exist_ok=True)
-    yaml_path = os.path.join(apps_dir, f"{app_id}.yaml")
-    with open(yaml_path, "w") as f:
-        yaml.safe_dump(application.model_dump(), f, default_flow_style=False, sort_keys=False)
+    # Persist to YAML — rollback in-memory on failure
+    try:
+        config_root = _get_config_root()
+        apps_dir = os.path.join(config_root, "applications")
+        os.makedirs(apps_dir, exist_ok=True)
+        yaml_path = os.path.join(apps_dir, f"{app_id}.yaml")
+        with open(yaml_path, "w") as f:
+            yaml.safe_dump(application.model_dump(), f, default_flow_style=False, sort_keys=False)
+    except (OSError, yaml.YAMLError) as exc:
+        applications[app_id] = previous
+        logger.error("Failed to persist application %s: %s", app_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to persist application to disk")
 
     logger.info("Updated application: %s", app_id)
     return application
@@ -107,13 +118,18 @@ async def delete_application(app_id: str) -> Dict[str, Any]:
             detail=f"Application {app_id} is referenced by clusters: {referencing_clusters}",
         )
 
-    del applications[app_id]
+    removed = applications.pop(app_id)
 
-    # Remove YAML file
-    config_root = _get_config_root()
-    yaml_path = os.path.join(config_root, "applications", f"{app_id}.yaml")
-    if os.path.exists(yaml_path):
-        os.remove(yaml_path)
+    # Remove YAML file — rollback in-memory on failure
+    try:
+        config_root = _get_config_root()
+        yaml_path = os.path.join(config_root, "applications", f"{app_id}.yaml")
+        if os.path.exists(yaml_path):
+            os.remove(yaml_path)
+    except OSError as exc:
+        applications[app_id] = removed
+        logger.error("Failed to remove application file %s: %s", app_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to remove application from disk")
 
     logger.info("Deleted application: %s", app_id)
     return {"detail": f"Application deleted: {app_id}"}

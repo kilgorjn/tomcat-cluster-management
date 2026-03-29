@@ -70,6 +70,19 @@ class WarDeployer:
             shutil.copy2(war, backup1)
             logger.info("Backed up current WAR: %s -> %s", war, backup1)
 
+    @staticmethod
+    def _sanitize_war_filename(war_filename: str) -> str:
+        """Sanitize war_filename to prevent path traversal.
+
+        Strips to basename, rejects path separators and control characters.
+        """
+        safe = os.path.basename(war_filename)
+        if not safe or not safe.endswith(".war") or safe != war_filename:
+            raise ValueError(f"Invalid war_filename: {war_filename!r}")
+        if any(c in safe for c in ("\x00", "\n", "\r")):
+            raise ValueError(f"Invalid characters in war_filename: {war_filename!r}")
+        return safe
+
     def deploy_war(
         self,
         app_id: str,
@@ -93,6 +106,7 @@ class WarDeployer:
         Returns:
             True if deployment successful, False otherwise.
         """
+        war_filename = self._sanitize_war_filename(war_filename)
         webapps = self._webapps_dir(app_id)
         war_file = os.path.join(webapps, war_filename)
 
