@@ -1,10 +1,13 @@
 """YAML configuration loader for TCM console and agent."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from shared.constants import DEFAULT_CONFIG_PATH, DEFAULT_CONFIG_ROOT
 
@@ -79,6 +82,42 @@ def load_cluster_configs(config_root: Optional[str] = None) -> List[Dict[str, An
                 clusters.append(cluster_config)
 
     return clusters
+
+
+def load_application_configs(config_root: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Load all application configuration files from {config_root}/applications/*.yaml.
+
+    Args:
+        config_root: Root configuration directory. Defaults to /etc/tcm.
+
+    Returns:
+        List of application configuration dictionaries.
+    """
+    if config_root is None:
+        config_root = DEFAULT_CONFIG_ROOT
+
+    apps_dir = Path(config_root) / "applications"
+    applications = []
+
+    if not apps_dir.exists():
+        return applications
+
+    for yaml_file in sorted(apps_dir.glob("*.yaml")):
+        try:
+            with open(yaml_file, "r") as f:
+                app_config = yaml.safe_load(f)
+                if app_config:
+                    if "app_id" not in app_config:
+                        logger.warning(
+                            "Skipping malformed application config (missing app_id): %s",
+                            yaml_file,
+                        )
+                        continue
+                    applications.append(app_config)
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Failed to parse application config %s: %s", yaml_file, exc)
+
+    return applications
 
 
 def load_node_configs(config_root: Optional[str] = None) -> List[Dict[str, Any]]:

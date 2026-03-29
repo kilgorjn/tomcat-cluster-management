@@ -1,10 +1,12 @@
 """TCM Console data models."""
 
+from console.models.application import Application
 from console.models.cluster import Cluster, ClusterPolicy, DeploymentConfig
 from console.models.deployment import DeploymentStatus, DeployRequest, PolicyUpdateRequest
 from console.models.node import Node, TomcatInstance
 
 __all__ = [
+    "Application",
     "Cluster",
     "ClusterPolicy",
     "DeploymentConfig",

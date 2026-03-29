@@ -1,0 +1,4 @@
+app_id: app-a
+name: BrokerageMobileWeb
+war_filename: BrokerageMobileWeb.war
+context_path: /BMW

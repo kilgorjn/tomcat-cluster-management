@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from console.models.application import Application
 from console.models.cluster import Cluster, ClusterPolicy, DeploymentConfig
 from console.models.node import Node, TomcatInstance
 from console.models.deployment import DeploymentStatus, DeployRequest, PolicyUpdateRequest
@@ -69,44 +70,70 @@ class TestCluster:
         cluster = Cluster(
             cluster_id="cluster-1",
             app_id="app-a",
-            app_path="/opt/tomcats/app-a",
         )
         assert cluster.cluster_id == "cluster-1"
         assert cluster.app_id == "app-a"
         assert cluster.nodes == []
         assert cluster.policy.mode == "AUTO"
-        assert cluster.current_version == "unknown"
-        assert cluster.previous_version is None
 
     def test_full_cluster(self):
         cluster = Cluster(
             cluster_id="cluster-1",
             app_id="app-a",
-            app_path="/opt/tomcats/app-a",
             nodes=["node-1", "node-2", "node-3"],
             policy=ClusterPolicy(mode="AUTO", min_instances=2, max_instances=5),
             deployment=DeploymentConfig(startup_timeout=120),
-            current_version="v1.2.3",
-            previous_version="v1.2.2",
         )
         assert len(cluster.nodes) == 3
         assert cluster.policy.min_instances == 2
         assert cluster.deployment.startup_timeout == 120
-        assert cluster.previous_version == "v1.2.2"
 
     def test_serialization_roundtrip(self):
         cluster = Cluster(
             cluster_id="test-cluster",
             app_id="test-app",
-            app_path="/opt/tomcats/test-app",
             nodes=["node-1"],
-            current_version="v1.0.0",
         )
         data = cluster.model_dump()
         restored = Cluster(**data)
         assert restored.cluster_id == cluster.cluster_id
         assert restored.app_id == cluster.app_id
         assert restored.nodes == cluster.nodes
+
+
+class TestApplication:
+    def test_construction(self):
+        app = Application(
+            app_id="app-a",
+            name="BrokerageMobileWeb",
+            war_filename="BrokerageMobileWeb.war",
+            context_path="/BMW",
+        )
+        assert app.app_id == "app-a"
+        assert app.name == "BrokerageMobileWeb"
+        assert app.war_filename == "BrokerageMobileWeb.war"
+        assert app.context_path == "/BMW"
+
+    def test_missing_required_fields(self):
+        with pytest.raises(ValidationError):
+            Application()  # type: ignore[call-arg]
+
+        with pytest.raises(ValidationError):
+            Application(app_id="app-a")  # type: ignore[call-arg]
+
+    def test_serialization_roundtrip(self):
+        app = Application(
+            app_id="app-b",
+            name="RetailBanking",
+            war_filename="RetailBanking.war",
+            context_path="/RB",
+        )
+        data = app.model_dump()
+        restored = Application(**data)
+        assert restored.app_id == app.app_id
+        assert restored.name == app.name
+        assert restored.war_filename == app.war_filename
+        assert restored.context_path == app.context_path
 
 
 class TestTomcatInstance:
@@ -118,7 +145,6 @@ class TestTomcatInstance:
         assert tc.instance_port == 9001
         assert tc.ajp_port == 8009
         assert tc.status == "stopped"
-        assert tc.current_version == "unknown"
         assert tc.pid is None
         assert tc.health_status == "unknown"
 
@@ -129,7 +155,6 @@ class TestTomcatInstance:
             instance_port=9001,
             ajp_port=8009,
             status="running",
-            current_version="v1.2.3",
             pid=12345,
             health_status="healthy",
             last_health_check=now,

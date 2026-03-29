@@ -1,0 +1,13 @@
+cluster_id: cluster-1
+app_id: app-a
+nodes:
+  - node-1
+  - node-2
+policy:
+  mode: AUTO
+  min_instances: 2
+  max_instances: 5
+deployment:
+  graceful_stop_timeout: 30
+  startup_timeout: 60
+  health_check_endpoint: /health

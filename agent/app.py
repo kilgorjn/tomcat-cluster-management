@@ -187,12 +187,17 @@ async def deploy_tomcat(
     controller = _get_controller()
 
     version = request.headers.get("X-Deploy-Version", "unknown")
+    war_filename = request.headers.get("X-War-Filename", "app.war")
+    context_path = request.headers.get("X-Context-Path", "/")
     war_bytes = await request.body()
 
     if not war_bytes:
         raise HTTPException(status_code=400, detail="Empty WAR file")
 
-    return await controller.deploy(app_id, war_bytes, version)
+    return await controller.deploy(
+        app_id, war_bytes, version,
+        war_filename=war_filename, context_path=context_path,
+    )
 
 
 @app.get("/health")

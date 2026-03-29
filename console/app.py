@@ -17,23 +17,35 @@ from fastapi import FastAPI
 # Add project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from console.api import clusters, deployments, monitoring, nodes
+from console.api import applications, clusters, deployments, monitoring, nodes
+from console.models.application import Application
 from console.models.cluster import Cluster, ClusterPolicy, DeploymentConfig
 from console.services.deployment_service import DeploymentService
 from console.services.node_manager import NodeManager
 from console.services.policy_service import PolicyService
-from shared.config_loader import load_cluster_configs, load_config, load_node_configs
+from shared.config_loader import load_application_configs, load_cluster_configs, load_config, load_node_configs
 from shared.constants import DEFAULT_CONFIG_ROOT, DEFAULT_CONSOLE_PORT
 from shared.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
 
 # Global service instances
+_applications: dict[str, Application] = {}
 _clusters: dict[str, Cluster] = {}
 _node_manager: NodeManager | None = None
 _deployment_service: DeploymentService | None = None
 _policy_service: PolicyService | None = None
 _config_root: str = DEFAULT_CONFIG_ROOT
+
+
+def _build_application(cfg: dict) -> Application:
+    """Build an Application model from a raw config dict."""
+    return Application(
+        app_id=cfg["app_id"],
+        name=cfg["name"],
+        war_filename=cfg["war_filename"],
+        context_path=cfg["context_path"],
+    )
 
 
 def _build_cluster(cfg: dict) -> Cluster:
@@ -43,19 +55,16 @@ def _build_cluster(cfg: dict) -> Cluster:
     return Cluster(
         cluster_id=cfg["cluster_id"],
         app_id=cfg["app_id"],
-        app_path=cfg.get("app_path", ""),
         nodes=cfg.get("nodes", []),
         policy=ClusterPolicy(**policy_data),
         deployment=DeploymentConfig(**deploy_data),
-        current_version=cfg.get("current_version", "unknown"),
-        previous_version=cfg.get("previous_version"),
     )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: initialize services on startup."""
-    global _clusters, _node_manager, _deployment_service, _policy_service, _config_root
+    global _applications, _clusters, _node_manager, _deployment_service, _policy_service, _config_root
 
     # Load configuration
     try:
@@ -73,6 +82,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log_format = config.get("logging", {}).get("format", "json")
 
     setup_logging("console", log_dir=log_dir, log_level=log_level, log_format=log_format)
+
+    # Load application configs
+    app_configs = load_application_configs(_config_root)
+    for cfg in app_configs:
+        application = _build_application(cfg)
+        _applications[application.app_id] = application
+    logger.info("Loaded %d application configurations", len(_applications))
 
     # Load cluster configs
     cluster_configs = load_cluster_configs(_config_root)
@@ -107,6 +123,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     deployments.router.clusters = _clusters  # type: ignore[attr-defined]
     deployments.router.deployment_service = _deployment_service  # type: ignore[attr-defined]
+    deployments.router.applications = _applications  # type: ignore[attr-defined]
+
+    applications.router.applications = _applications  # type: ignore[attr-defined]
+    applications.router.clusters = _clusters  # type: ignore[attr-defined]
+    applications.router.config_root = _config_root  # type: ignore[attr-defined]
 
     nodes.router.node_manager = _node_manager  # type: ignore[attr-defined]
 
@@ -130,6 +151,7 @@ app.include_router(clusters.router, prefix="/api")
 app.include_router(deployments.router, prefix="/api")
 app.include_router(nodes.router, prefix="/api")
 app.include_router(monitoring.router, prefix="/api")
+app.include_router(applications.router, prefix="/api")
 
 
 if __name__ == "__main__":

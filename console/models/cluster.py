@@ -1,6 +1,6 @@
 """Cluster data models for TCM Console."""
 
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -40,11 +40,6 @@ class Cluster(BaseModel):
 
     cluster_id: str = Field(description="Unique cluster identifier")
     app_id: str = Field(description="Application identifier")
-    app_path: str = Field(description="Path to Tomcat application directory")
     nodes: List[str] = Field(default_factory=list, description="Node IDs in cluster")
     policy: ClusterPolicy = Field(default_factory=ClusterPolicy)
     deployment: DeploymentConfig = Field(default_factory=DeploymentConfig)
-    current_version: str = Field(default="unknown", description="Current app version")
-    previous_version: Optional[str] = Field(
-        default=None, description="Previous app version for rollback"
-    )

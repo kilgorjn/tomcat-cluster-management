@@ -15,7 +15,6 @@ class TomcatInstance(BaseModel):
     instance_port: int = Field(description="Tomcat HTTP port")
     ajp_port: int = Field(description="AJP connector port")
     status: str = Field(default="stopped", description="Instance status")
-    current_version: str = Field(default="unknown", description="Current WAR version")
     pid: Optional[int] = Field(default=None, description="Process ID if running")
     health_status: str = Field(
         default=HEALTH_UNKNOWN, description="Health check status"
