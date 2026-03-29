@@ -12,34 +12,46 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from console.models.application import Application
 from console.models.cluster import Cluster, ClusterPolicy, DeploymentConfig
 from console.services.node_manager import NodeManager
 from console.services.policy_service import PolicyService
 from console.services.deployment_service import DeploymentService
-from console.api import clusters, deployments, nodes, monitoring
+from console.api import applications, clusters, deployments, nodes, monitoring
 
 
 def _build_test_app() -> FastAPI:
     """Build a standalone FastAPI app with test data injected via lifespan."""
 
+    sample_applications = {
+        "app-a": Application(
+            app_id="app-a",
+            name="BrokerageMobileWeb",
+            war_filename="BrokerageMobileWeb.war",
+            context_path="/BMW",
+        ),
+        "app-b": Application(
+            app_id="app-b",
+            name="RetailBanking",
+            war_filename="RetailBanking.war",
+            context_path="/RB",
+        ),
+    }
+
     sample_clusters = {
         "cluster-1": Cluster(
             cluster_id="cluster-1",
             app_id="app-a",
-            app_path="/opt/tomcats/app-a",
             nodes=["node-1", "node-2"],
             policy=ClusterPolicy(mode="AUTO", min_instances=2, max_instances=5),
             deployment=DeploymentConfig(),
-            current_version="v1.0.0",
         ),
         "cluster-2": Cluster(
             cluster_id="cluster-2",
             app_id="app-b",
-            app_path="/opt/tomcats/app-b",
             nodes=["node-1"],
             policy=ClusterPolicy(mode="MANUAL", min_instances=1, max_instances=3),
             deployment=DeploymentConfig(),
-            current_version="v2.0.0",
         ),
     }
 
@@ -56,14 +68,12 @@ def _build_test_app() -> FastAPI:
                     "instance_port": 9001,
                     "ajp_port": 8009,
                     "status": "running",
-                    "version": "v1.0.0",
                 },
                 {
                     "app_id": "app-b",
                     "instance_port": 9002,
                     "ajp_port": 8010,
                     "status": "stopped",
-                    "version": "v2.0.0",
                 },
             ],
         },
@@ -78,7 +88,6 @@ def _build_test_app() -> FastAPI:
                     "instance_port": 9001,
                     "ajp_port": 8009,
                     "status": "running",
-                    "version": "v1.0.0",
                 },
             ],
         },
@@ -103,6 +112,11 @@ def _build_test_app() -> FastAPI:
 
         deployments.router.clusters = sample_clusters  # type: ignore[attr-defined]
         deployments.router.deployment_service = deployment_service  # type: ignore[attr-defined]
+        deployments.router.applications = sample_applications  # type: ignore[attr-defined]
+
+        applications.router.applications = sample_applications  # type: ignore[attr-defined]
+        applications.router.clusters = sample_clusters  # type: ignore[attr-defined]
+        applications.router.config_root = config_root  # type: ignore[attr-defined]
 
         nodes.router.node_manager = node_manager  # type: ignore[attr-defined]
 
@@ -115,6 +129,7 @@ def _build_test_app() -> FastAPI:
     app.include_router(deployments.router)
     app.include_router(nodes.router)
     app.include_router(monitoring.router)
+    app.include_router(applications.router)
     return app
 
 
@@ -143,8 +158,10 @@ class TestClusterEndpoints:
         data = response.json()
         assert data["cluster_id"] == "cluster-1"
         assert data["app_id"] == "app-a"
-        assert data["current_version"] == "v1.0.0"
         assert len(data["nodes"]) == 2
+        assert "current_version" not in data
+        assert "previous_version" not in data
+        assert "app_path" not in data
 
     def test_get_cluster_not_found(self, client):
         response = client.get("/clusters/nonexistent")
@@ -255,10 +272,108 @@ class TestDeploymentEndpoints:
         response = client.get("/clusters/cluster-1/deployments/deploy-nonexistent")
         assert response.status_code == 404
 
-    def test_rollback_no_previous(self, client):
+    def test_rollback_returns_not_implemented(self, client):
         response = client.post("/clusters/cluster-1/rollback")
-        assert response.status_code == 409
+        assert response.status_code == 501
 
     def test_rollback_cluster_not_found(self, client):
         response = client.post("/clusters/nonexistent/rollback")
         assert response.status_code == 404
+
+
+class TestApplicationEndpoints:
+    def test_list_applications(self, client):
+        response = client.get("/applications")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        app_ids = {a["app_id"] for a in data}
+        assert "app-a" in app_ids
+        assert "app-b" in app_ids
+
+    def test_get_application(self, client):
+        response = client.get("/applications/app-a")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["app_id"] == "app-a"
+        assert data["name"] == "BrokerageMobileWeb"
+        assert data["war_filename"] == "BrokerageMobileWeb.war"
+        assert data["context_path"] == "/BMW"
+
+    def test_get_application_not_found(self, client):
+        response = client.get("/applications/nonexistent")
+        assert response.status_code == 404
+
+    def test_create_application(self, client):
+        response = client.post(
+            "/applications",
+            json={
+                "app_id": "app-c",
+                "name": "NewApp",
+                "war_filename": "NewApp.war",
+                "context_path": "/NA",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["app_id"] == "app-c"
+
+    def test_create_application_duplicate(self, client):
+        response = client.post(
+            "/applications",
+            json={
+                "app_id": "app-a",
+                "name": "Duplicate",
+                "war_filename": "Dup.war",
+                "context_path": "/dup",
+            },
+        )
+        assert response.status_code == 409
+
+    def test_update_application(self, client):
+        response = client.put(
+            "/applications/app-a",
+            json={
+                "app_id": "app-a",
+                "name": "UpdatedName",
+                "war_filename": "Updated.war",
+                "context_path": "/updated",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "UpdatedName"
+
+    def test_update_application_not_found(self, client):
+        response = client.put(
+            "/applications/nonexistent",
+            json={
+                "app_id": "nonexistent",
+                "name": "X",
+                "war_filename": "X.war",
+                "context_path": "/x",
+            },
+        )
+        assert response.status_code == 404
+
+    def test_delete_application_not_found(self, client):
+        response = client.delete("/applications/nonexistent")
+        assert response.status_code == 404
+
+    def test_delete_application_in_use(self, client):
+        response = client.delete("/applications/app-a")
+        assert response.status_code == 409
+
+    def test_delete_application_success(self, client):
+        # First create an unreferenced application
+        client.post(
+            "/applications",
+            json={
+                "app_id": "app-temp",
+                "name": "Temp",
+                "war_filename": "Temp.war",
+                "context_path": "/temp",
+            },
+        )
+        response = client.delete("/applications/app-temp")
+        assert response.status_code == 200

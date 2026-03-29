@@ -1,0 +1,4 @@
+app_id: app-b
+name: RetailBanking
+war_filename: RetailBanking.war
+context_path: /RB

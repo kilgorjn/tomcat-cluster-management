@@ -1,0 +1,8 @@
+cluster_id: cluster-2
+app_id: app-b
+nodes:
+  - node-1
+policy:
+  mode: MANUAL
+  min_instances: 1
+  max_instances: 3

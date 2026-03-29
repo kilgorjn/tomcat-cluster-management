@@ -135,7 +135,12 @@ class TomcatController:
         return await self.start(app_id)
 
     async def deploy(
-        self, app_id: str, war_bytes: bytes, version: str
+        self,
+        app_id: str,
+        war_bytes: bytes,
+        version: str,
+        war_filename: str = "app.war",
+        context_path: str = "/",
     ) -> Dict[str, Any]:
         """Full deploy workflow for a Tomcat instance.
 
@@ -167,7 +172,10 @@ class TomcatController:
                 }
 
         # Step 2: Deploy WAR
-        deploy_ok = self.war_deployer.deploy_war(app_id, war_bytes, version)
+        deploy_ok = self.war_deployer.deploy_war(
+            app_id, war_bytes, version,
+            war_filename=war_filename, context_path=context_path,
+        )
         if not deploy_ok:
             return {
                 "status": "error",

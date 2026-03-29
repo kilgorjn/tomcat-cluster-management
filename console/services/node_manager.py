@@ -38,7 +38,6 @@ class NodeManager:
                     instance_port=tc["instance_port"],
                     ajp_port=tc["ajp_port"],
                     status=tc.get("status", "stopped"),
-                    current_version=tc.get("version", "unknown"),
                 )
 
             self._nodes[node_id] = Node(
@@ -124,9 +123,6 @@ class NodeManager:
                         node.tomcats[app_id].health_status = tc_data.get(
                             "health", "unknown"
                         )
-                        node.tomcats[app_id].current_version = tc_data.get(
-                            "version", node.tomcats[app_id].current_version
-                        )
                         node.tomcats[app_id].last_health_check = utc_now()
 
                 return data
@@ -167,7 +163,13 @@ class NodeManager:
             return None
 
     async def deploy_to_node(
-        self, node_id: str, app_id: str, war_bytes: bytes, version: str
+        self,
+        node_id: str,
+        app_id: str,
+        war_bytes: bytes,
+        version: str,
+        war_filename: str = "app.war",
+        context_path: str = "/",
     ) -> Optional[Dict[str, Any]]:
         """Send WAR file to a node agent for deployment.
 
@@ -176,6 +178,8 @@ class NodeManager:
             app_id: Target application identifier.
             war_bytes: WAR file content as bytes.
             version: Version string for the deployment.
+            war_filename: Canonical WAR filename.
+            context_path: Tomcat context path.
 
         Returns:
             Response dict from agent, or None on failure.
@@ -196,6 +200,8 @@ class NodeManager:
                     headers={
                         "Content-Type": "application/octet-stream",
                         "X-Deploy-Version": version,
+                        "X-War-Filename": war_filename,
+                        "X-Context-Path": context_path,
                     },
                 )
                 response.raise_for_status()
