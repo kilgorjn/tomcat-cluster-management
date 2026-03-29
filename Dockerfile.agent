@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    procps \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/tcm
+
+# Copy source
+COPY agent/  ./agent/
+COPY shared/ ./shared/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r agent/requirements.txt
+
+# Runtime directories
+RUN mkdir -p /etc/tcm /var/log/tcm /opt/tomcats
+
+EXPOSE 9001
+
+ENV CONFIG_PATH=/etc/tcm/local-config.yaml \
+    PYTHONPATH=/opt/tcm
+
+CMD ["python", "-m", "uvicorn", "agent.app:app", "--host", "0.0.0.0", "--port", "9001"]
