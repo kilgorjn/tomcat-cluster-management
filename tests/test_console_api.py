@@ -109,6 +109,7 @@ def _build_test_app() -> FastAPI:
         clusters.router.node_manager = node_manager  # type: ignore[attr-defined]
         clusters.router.policy_service = policy_service  # type: ignore[attr-defined]
         clusters.router.config_root = config_root  # type: ignore[attr-defined]
+        clusters.router.applications = sample_applications  # type: ignore[attr-defined]
 
         deployments.router.clusters = sample_clusters  # type: ignore[attr-defined]
         deployments.router.deployment_service = deployment_service  # type: ignore[attr-defined]
@@ -119,6 +120,8 @@ def _build_test_app() -> FastAPI:
         applications.router.config_root = config_root  # type: ignore[attr-defined]
 
         nodes.router.node_manager = node_manager  # type: ignore[attr-defined]
+        nodes.router.clusters = sample_clusters  # type: ignore[attr-defined]
+        nodes.router.config_root = config_root  # type: ignore[attr-defined]
 
         monitoring.router.clusters = sample_clusters  # type: ignore[attr-defined]
         monitoring.router.node_manager = node_manager  # type: ignore[attr-defined]
@@ -377,3 +380,167 @@ class TestApplicationEndpoints:
         )
         response = client.delete("/applications/app-temp")
         assert response.status_code == 200
+
+
+class TestClusterCRUD:
+    def test_create_cluster(self, client):
+        response = client.post(
+            "/clusters",
+            json={
+                "cluster_id": "cluster-new",
+                "app_id": "app-a",
+                "nodes": ["node-1"],
+                "policy": {"mode": "AUTO", "min_instances": 1, "max_instances": 5},
+                "deployment": {},
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["cluster_id"] == "cluster-new"
+        assert data["app_id"] == "app-a"
+
+    def test_create_cluster_duplicate(self, client):
+        response = client.post(
+            "/clusters",
+            json={"cluster_id": "cluster-1", "app_id": "app-a", "nodes": []},
+        )
+        assert response.status_code == 409
+
+    def test_create_cluster_unknown_app(self, client):
+        response = client.post(
+            "/clusters",
+            json={"cluster_id": "cluster-new", "app_id": "nonexistent", "nodes": []},
+        )
+        assert response.status_code == 400
+
+    def test_update_cluster(self, client):
+        response = client.put(
+            "/clusters/cluster-1",
+            json={
+                "cluster_id": "cluster-1",
+                "app_id": "app-a",
+                "nodes": ["node-1"],
+                "policy": {"mode": "MANUAL", "min_instances": 1, "max_instances": 3},
+                "deployment": {},
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["policy"]["mode"] == "MANUAL"
+        assert data["policy"]["max_instances"] == 3
+
+    def test_update_cluster_not_found(self, client):
+        response = client.put(
+            "/clusters/nonexistent",
+            json={"cluster_id": "nonexistent", "app_id": "app-a", "nodes": []},
+        )
+        assert response.status_code == 404
+
+    def test_update_cluster_unknown_app(self, client):
+        response = client.put(
+            "/clusters/cluster-1",
+            json={"cluster_id": "cluster-1", "app_id": "nonexistent", "nodes": []},
+        )
+        assert response.status_code == 400
+
+    def test_delete_cluster(self, client):
+        # Create one first so we don't disturb shared test data
+        client.post(
+            "/clusters",
+            json={"cluster_id": "cluster-temp", "app_id": "app-a", "nodes": []},
+        )
+        response = client.delete("/clusters/cluster-temp")
+        assert response.status_code == 200
+        assert client.get("/clusters/cluster-temp").status_code == 404
+
+    def test_delete_cluster_not_found(self, client):
+        response = client.delete("/clusters/nonexistent")
+        assert response.status_code == 404
+
+
+class TestNodeCRUD:
+    def test_create_node(self, client):
+        response = client.post(
+            "/nodes",
+            json={
+                "node_id": "node-new",
+                "hostname": "node-new.internal",
+                "ip_address": "192.168.1.99",
+                "agent_port": 9001,
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["node_id"] == "node-new"
+        assert data["hostname"] == "node-new.internal"
+
+    def test_create_node_duplicate(self, client):
+        response = client.post(
+            "/nodes",
+            json={
+                "node_id": "node-1",
+                "hostname": "node-1.internal",
+                "ip_address": "192.168.1.10",
+                "agent_port": 9001,
+            },
+        )
+        assert response.status_code == 409
+
+    def test_update_node(self, client):
+        # Create a node to update
+        client.post(
+            "/nodes",
+            json={
+                "node_id": "node-upd",
+                "hostname": "node-upd.internal",
+                "ip_address": "192.168.1.50",
+                "agent_port": 9001,
+            },
+        )
+        response = client.put(
+            "/nodes/node-upd",
+            json={
+                "node_id": "node-upd",
+                "hostname": "node-upd-renamed.internal",
+                "ip_address": "192.168.1.51",
+                "agent_port": 9002,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["hostname"] == "node-upd-renamed.internal"
+        assert data["agent_port"] == 9002
+
+    def test_update_node_not_found(self, client):
+        response = client.put(
+            "/nodes/nonexistent",
+            json={
+                "node_id": "nonexistent",
+                "hostname": "x.internal",
+                "ip_address": "192.168.1.1",
+                "agent_port": 9001,
+            },
+        )
+        assert response.status_code == 404
+
+    def test_delete_node(self, client):
+        client.post(
+            "/nodes",
+            json={
+                "node_id": "node-del",
+                "hostname": "node-del.internal",
+                "ip_address": "192.168.1.88",
+                "agent_port": 9001,
+            },
+        )
+        response = client.delete("/nodes/node-del")
+        assert response.status_code == 200
+        assert client.get("/nodes/node-del/status").status_code == 404
+
+    def test_delete_node_not_found(self, client):
+        response = client.delete("/nodes/nonexistent")
+        assert response.status_code == 404
+
+    def test_delete_node_in_use_by_cluster(self, client):
+        response = client.delete("/nodes/node-1")
+        assert response.status_code == 409

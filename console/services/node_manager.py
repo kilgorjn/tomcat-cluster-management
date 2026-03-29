@@ -68,6 +68,45 @@ class NodeManager:
         """
         return list(self._nodes.values())
 
+    def add_node(self, node: Node) -> None:
+        """Add a node to the registry.
+
+        Args:
+            node: Node to add.
+
+        Raises:
+            ValueError: If node_id already exists.
+        """
+        if node.node_id in self._nodes:
+            raise ValueError(f"Node already exists: {node.node_id}")
+        self._nodes[node.node_id] = node
+
+    def update_node(self, node: Node) -> None:
+        """Replace an existing node in the registry.
+
+        Args:
+            node: Updated node (must already exist).
+
+        Raises:
+            ValueError: If node_id is not found.
+        """
+        if node.node_id not in self._nodes:
+            raise ValueError(f"Node not found: {node.node_id}")
+        self._nodes[node.node_id] = node
+
+    def remove_node(self, node_id: str) -> Node:
+        """Remove a node from the registry and return it.
+
+        Args:
+            node_id: ID of the node to remove.
+
+        Raises:
+            ValueError: If node_id is not found.
+        """
+        if node_id not in self._nodes:
+            raise ValueError(f"Node not found: {node_id}")
+        return self._nodes.pop(node_id)
+
     def get_nodes_for_cluster(self, node_ids: List[str]) -> List[Node]:
         """Return nodes matching the given IDs.
 
@@ -126,7 +165,7 @@ class NodeManager:
                         node.tomcats[app_id].last_health_check = utc_now()
 
                 return data
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
             logger.warning("Failed to poll node %s: %s", node_id, exc)
             node.agent_status = AGENT_OFFLINE
             return None
@@ -155,7 +194,7 @@ class NodeManager:
                 response = await client.post(url)
                 response.raise_for_status()
                 return response.json()
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
             logger.error(
                 "Failed to send %s to %s/%s: %s", action, node_id, app_id, exc
             )
@@ -206,7 +245,7 @@ class NodeManager:
                 )
                 response.raise_for_status()
                 return response.json()
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
             logger.error("Failed to deploy to %s/%s: %s", node_id, app_id, exc)
             node.agent_status = AGENT_OFFLINE
             return None

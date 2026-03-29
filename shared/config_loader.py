@@ -76,10 +76,13 @@ def load_cluster_configs(config_root: Optional[str] = None) -> List[Dict[str, An
         return clusters
 
     for yaml_file in sorted(clusters_dir.glob("*.yaml")):
-        with open(yaml_file, "r") as f:
-            cluster_config = yaml.safe_load(f)
-            if cluster_config:
-                clusters.append(cluster_config)
+        try:
+            with open(yaml_file, "r") as f:
+                cluster_config = yaml.safe_load(f)
+                if cluster_config:
+                    clusters.append(cluster_config)
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Failed to parse cluster config %s: %s", yaml_file, exc)
 
     return clusters
 
@@ -139,23 +142,48 @@ def load_node_configs(config_root: Optional[str] = None) -> List[Dict[str, Any]]
         return nodes
 
     for yaml_file in sorted(nodes_dir.glob("*.yaml")):
-        with open(yaml_file, "r") as f:
-            node_config = yaml.safe_load(f)
-            if node_config:
-                nodes.append(node_config)
+        try:
+            with open(yaml_file, "r") as f:
+                node_config = yaml.safe_load(f)
+                if node_config:
+                    nodes.append(node_config)
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Failed to parse node config %s: %s", yaml_file, exc)
 
     return nodes
 
 
 def save_yaml(data: Dict[str, Any], file_path: str) -> None:
-    """Save data to a YAML file.
+    """Save data to a YAML file atomically via temp-file + os.replace.
+
+    Writes to a sibling temp file, fsyncs, then replaces the target so a
+    crash mid-write never leaves a truncated or corrupt file.
 
     Args:
         data: Dictionary to serialize.
         file_path: Destination file path.
     """
+    import os
+    import tempfile
+
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(path, "w") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+    content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=path.parent, suffix=".yaml.tmp", delete=False
+        ) as f:
+            tmp_path = f.name
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        raise

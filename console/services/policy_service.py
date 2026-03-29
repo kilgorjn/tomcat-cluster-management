@@ -8,7 +8,8 @@ be activated in Phase 2.
 import logging
 from typing import Any, Dict, Optional
 
-import yaml
+from shared.config_loader import save_yaml
+
 
 from console.models.cluster import Cluster, ClusterPolicy
 from shared.constants import POLICY_AUTO, POLICY_MANUAL
@@ -106,12 +107,7 @@ class PolicyService:
         config_path = f"{config_root}/clusters/{cluster_id}.yaml"
         try:
             cluster_data = cluster.model_dump()
-            # Remove fields that aren't part of the config file
-            cluster_data.pop("previous_version", None)
-
-            with open(config_path, "w") as f:
-                yaml.safe_dump(cluster_data, f, default_flow_style=False, sort_keys=False)
-
+            save_yaml(cluster_data, config_path)
             logger.info("Persisted policy for cluster %s to %s", cluster_id, config_path)
             return True
         except OSError as exc:

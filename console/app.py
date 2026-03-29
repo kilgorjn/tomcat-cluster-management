@@ -130,6 +130,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     clusters.router.node_manager = _node_manager  # type: ignore[attr-defined]
     clusters.router.policy_service = _policy_service  # type: ignore[attr-defined]
     clusters.router.config_root = _config_root  # type: ignore[attr-defined]
+    clusters.router.applications = _applications  # type: ignore[attr-defined]
 
     deployments.router.clusters = _clusters  # type: ignore[attr-defined]
     deployments.router.deployment_service = _deployment_service  # type: ignore[attr-defined]
@@ -140,6 +141,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     applications.router.config_root = _config_root  # type: ignore[attr-defined]
 
     nodes.router.node_manager = _node_manager  # type: ignore[attr-defined]
+    nodes.router.clusters = _clusters  # type: ignore[attr-defined]
+    nodes.router.config_root = _config_root  # type: ignore[attr-defined]
 
     monitoring.router.clusters = _clusters  # type: ignore[attr-defined]
     monitoring.router.node_manager = _node_manager  # type: ignore[attr-defined]
