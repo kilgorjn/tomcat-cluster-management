@@ -42,7 +42,7 @@ def _get_config_root() -> str:
 def _persist_node(node: Node, config_root: str) -> None:
     nodes_dir = Path(config_root) / "nodes"
     target = nodes_dir / f"{node.node_id}.yaml"
-    if not str(target.resolve()).startswith(str(nodes_dir.resolve())):
+    if not target.resolve().is_relative_to(nodes_dir.resolve()):
         raise OSError(f"Refusing to write outside config directory: {target}")
     data = {
         "node_id": node.node_id,
@@ -73,12 +73,12 @@ async def create_node(node: Node) -> Dict[str, Any]:
         if node_manager.get_node(node.node_id) is not None:
             raise HTTPException(status_code=409, detail=f"Node already exists: {node.node_id}")
 
-        node_manager._nodes[node.node_id] = node
+        node_manager.add_node(node)
 
         try:
             _persist_node(node, _get_config_root())
-        except (OSError, yaml.YAMLError) as exc:
-            del node_manager._nodes[node.node_id]
+        except OSError as exc:
+            node_manager.remove_node(node.node_id)
             logger.error("Failed to persist node %s: %s", node.node_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist node to disk")
 
@@ -93,17 +93,17 @@ async def update_node(node_id: str, node: Node) -> Dict[str, Any]:
 
     async with _node_lock:
         node_manager = _get_node_manager()
-        if node_manager.get_node(node_id) is None:
+        previous = node_manager.get_node(node_id)
+        if previous is None:
             raise HTTPException(status_code=404, detail=f"Node not found: {node_id}")
 
         updated = node.model_copy(update={"node_id": node_id})
-        previous = node_manager._nodes[node_id]
-        node_manager._nodes[node_id] = updated
+        node_manager.update_node(updated)
 
         try:
             _persist_node(updated, _get_config_root())
-        except (OSError, yaml.YAMLError) as exc:
-            node_manager._nodes[node_id] = previous
+        except OSError as exc:
+            node_manager.update_node(previous)
             logger.error("Failed to persist node %s: %s", node_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist node to disk")
 
@@ -131,18 +131,18 @@ async def delete_node(node_id: str) -> Dict[str, Any]:
                 detail=f"Node {node_id} is referenced by clusters: {referencing_clusters}",
             )
 
-        removed = node_manager._nodes.pop(node_id)
+        removed = node_manager.remove_node(node_id)
 
         try:
             config_root = _get_config_root()
             nodes_dir = Path(config_root) / "nodes"
             yaml_path = nodes_dir / f"{node_id}.yaml"
-            if not str(yaml_path.resolve()).startswith(str(nodes_dir.resolve())):
+            if not yaml_path.resolve().is_relative_to(nodes_dir.resolve()):
                 raise OSError(f"Refusing to delete outside config directory: {yaml_path}")
             if yaml_path.exists():
                 yaml_path.unlink()
         except OSError as exc:
-            node_manager._nodes[node_id] = removed
+            node_manager.add_node(removed)
             logger.error("Failed to remove node file %s: %s", node_id, exc)
             raise HTTPException(status_code=500, detail="Failed to remove node from disk")
 

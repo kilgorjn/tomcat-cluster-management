@@ -68,6 +68,45 @@ class NodeManager:
         """
         return list(self._nodes.values())
 
+    def add_node(self, node: Node) -> None:
+        """Add a node to the registry.
+
+        Args:
+            node: Node to add.
+
+        Raises:
+            ValueError: If node_id already exists.
+        """
+        if node.node_id in self._nodes:
+            raise ValueError(f"Node already exists: {node.node_id}")
+        self._nodes[node.node_id] = node
+
+    def update_node(self, node: Node) -> None:
+        """Replace an existing node in the registry.
+
+        Args:
+            node: Updated node (must already exist).
+
+        Raises:
+            ValueError: If node_id is not found.
+        """
+        if node.node_id not in self._nodes:
+            raise ValueError(f"Node not found: {node.node_id}")
+        self._nodes[node.node_id] = node
+
+    def remove_node(self, node_id: str) -> Node:
+        """Remove a node from the registry and return it.
+
+        Args:
+            node_id: ID of the node to remove.
+
+        Raises:
+            ValueError: If node_id is not found.
+        """
+        if node_id not in self._nodes:
+            raise ValueError(f"Node not found: {node_id}")
+        return self._nodes.pop(node_id)
+
     def get_nodes_for_cluster(self, node_ids: List[str]) -> List[Node]:
         """Return nodes matching the given IDs.
 

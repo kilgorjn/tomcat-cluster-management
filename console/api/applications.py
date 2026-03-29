@@ -41,7 +41,7 @@ def _get_config_root() -> str:
 def _app_yaml_path(app_id: str, config_root: str) -> Path:
     apps_dir = Path(config_root) / "applications"
     target = apps_dir / f"{app_id}.yaml"
-    if not str(target.resolve()).startswith(str(apps_dir.resolve())):
+    if not target.resolve().is_relative_to(apps_dir.resolve()):
         raise OSError(f"Refusing to write outside config directory: {target}")
     return target
 
@@ -80,7 +80,7 @@ async def create_application(application: Application) -> Application:
 
         try:
             save_yaml(application.model_dump(), str(_app_yaml_path(application.app_id, _get_config_root())))
-        except (OSError, Exception) as exc:
+        except OSError as exc:
             del applications[application.app_id]
             logger.error("Failed to persist application %s: %s", application.app_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist application to disk")
@@ -105,7 +105,7 @@ async def update_application(app_id: str, application: Application) -> Applicati
 
         try:
             save_yaml(updated.model_dump(), str(_app_yaml_path(app_id, _get_config_root())))
-        except (OSError, Exception) as exc:
+        except OSError as exc:
             applications[app_id] = previous
             logger.error("Failed to persist application %s: %s", app_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist application to disk")

@@ -54,7 +54,7 @@ def _get_applications() -> Dict[str, Application]:
 def _persist_cluster(cluster: Cluster, config_root: str) -> None:
     clusters_dir = Path(config_root) / "clusters"
     target = clusters_dir / f"{cluster.cluster_id}.yaml"
-    if not str(target.resolve()).startswith(str(clusters_dir.resolve())):
+    if not target.resolve().is_relative_to(clusters_dir.resolve()):
         raise OSError(f"Refusing to write outside config directory: {target}")
     save_yaml(cluster.model_dump(), str(target))
 
@@ -77,7 +77,7 @@ async def create_cluster(cluster: Cluster) -> Dict[str, Any]:
 
         try:
             _persist_cluster(cluster, _get_config_root())
-        except (OSError, yaml.YAMLError) as exc:
+        except OSError as exc:
             del clusters[cluster.cluster_id]
             logger.error("Failed to persist cluster %s: %s", cluster.cluster_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
@@ -106,7 +106,7 @@ async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
 
         try:
             _persist_cluster(updated, _get_config_root())
-        except (OSError, yaml.YAMLError) as exc:
+        except OSError as exc:
             clusters[cluster_id] = previous
             logger.error("Failed to persist cluster %s: %s", cluster_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")

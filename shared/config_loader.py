@@ -164,13 +164,20 @@ def save_yaml(data: Dict[str, Any], file_path: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".yaml.tmp")
+    tmp_path = None
     try:
-        with os.fdopen(fd, "w") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=path.parent, suffix=".yaml.tmp", delete=False
+        ) as f:
+            tmp_path = f.name
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, path)
     except Exception:
-        os.unlink(tmp_path)
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
         raise
