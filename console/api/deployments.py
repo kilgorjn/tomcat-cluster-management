@@ -1,9 +1,10 @@
 """Deployment API router for TCM Console."""
 
 import logging
+import tempfile
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from console.models.application import Application
 from console.models.cluster import Cluster
@@ -67,6 +68,69 @@ async def deploy(cluster_id: str, request: DeployRequest) -> Dict[str, Any]:
         "status": deployment.status,
         "cluster_id": cluster_id,
         "version": request.version,
+        "nodes_total": deployment.nodes_total,
+    }
+
+
+@router.post("/clusters/{cluster_id}/upload-deploy", status_code=202)
+async def upload_deploy(
+    cluster_id: str,
+    war: UploadFile = File(..., description="WAR file to deploy"),
+    version: str = Form(..., description="Version identifier for this deployment"),
+) -> Dict[str, Any]:
+    """Upload a WAR file and deploy it to all nodes in a cluster.
+
+    Accepts a multipart/form-data POST with the WAR bytes and a version string.
+    Writes the WAR to a temp file, then hands off to the deployment service.
+    The deployment runs in the background; poll the returned deployment_id for status.
+    """
+    clusters = _get_clusters()
+    cluster = clusters.get(cluster_id)
+    if cluster is None:
+        raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
+
+    applications = _get_applications()
+    application = applications.get(cluster.app_id)
+    if application is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application not found for cluster {cluster_id}: {cluster.app_id}",
+        )
+
+    if not war.filename or not war.filename.endswith(".war"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be a .war file")
+
+    war_bytes = await war.read()
+    if not war_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded WAR file is empty")
+
+    # Write to a named temp file so DeploymentService can read it by path
+    with tempfile.NamedTemporaryFile(suffix=".war", delete=False) as tmp:
+        tmp.write(war_bytes)
+        tmp_path = tmp.name
+
+    logger.info(
+        "WAR upload for cluster %s: %s (%d bytes), version %s",
+        cluster_id, war.filename, len(war_bytes), version,
+    )
+
+    deployment_service = _get_deployment_service()
+    try:
+        deployment = await deployment_service.start_deployment(
+            cluster=cluster,
+            war_path=tmp_path,
+            version=version,
+            war_filename=application.war_filename,
+            context_path=application.context_path,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "deployment_id": deployment.deployment_id,
+        "status": deployment.status,
+        "cluster_id": cluster_id,
+        "version": version,
         "nodes_total": deployment.nodes_total,
     }
 
