@@ -32,16 +32,21 @@ services:
       dockerfile: Dockerfile.agent
     container_name: tcm-node
     ports:
-      - "9001:9001"
+      - "9001:9001"   # TCM agent API
+      - "8080:8080"   # Tomcat app-a HTTP (for direct browser access / testing)
     volumes:
       - ./docker/agent/config/local-config.yaml:/etc/tcm/local-config.yaml:ro
       - tcm-agent-logs:/var/log/tcm
-      - tcm-tomcats:/opt/tomcats
+      # Persist the Tomcat CATALINA_BASE dirs so WARs and logs survive restarts.
+      # The app-a instance skeleton is built into the image; the volume overlays
+      # the webapps/ and logs/ dirs so deployed WARs persist.
+      - tcm-tomcat-app-a-webapps:/opt/tomcats/app-a/webapps
+      - tcm-tomcat-app-a-logs:/opt/tomcats/app-a/logs
     networks:
       - tcm
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/health')"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,4 +59,5 @@ networks:
 volumes:
   tcm-console-logs:
   tcm-agent-logs:
-  tcm-tomcats:
+  tcm-tomcat-app-a-webapps:
+  tcm-tomcat-app-a-logs:
