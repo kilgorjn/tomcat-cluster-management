@@ -13,7 +13,7 @@ export const useApplicationStore = defineStore('applications', () => {
     error.value = null
     try {
       const res = await api.getApplications()
-      applications.value = res.data.applications
+      applications.value = res.data
     } catch (e: any) {
       error.value = e.response?.data?.detail ?? 'Failed to load applications'
     } finally {

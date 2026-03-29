@@ -6,22 +6,28 @@ export interface TomcatInstance {
   ajp_port: number
   status: string
   pid?: number | null
-  health_status?: string
+  health?: string
 }
 
-export interface Node {
+// Summary returned by GET /nodes (no tomcats detail)
+export interface NodeSummary {
   node_id: string
   hostname: string
   ip_address: string
   agent_port: number
   agent_status?: string
+  tomcat_count?: number
+}
+
+// Full node detail returned by GET /nodes/{id}/status
+export interface Node extends NodeSummary {
   last_heartbeat?: string | null
   tomcats: Record<string, TomcatInstance>
 }
 
-export const getNodes = () => api.get<{ nodes: Node[] }>('/nodes')
-export const getNode = (id: string) => api.get<Node>(`/nodes/${id}`)
-export const createNode = (data: Node) => api.post<Node>('/nodes', data)
-export const updateNode = (id: string, data: Node) => api.put<Node>(`/nodes/${id}`, data)
+export const getNodes = () => api.get<{ nodes: NodeSummary[] }>('/nodes')
+export const getNodeStatus = (id: string) => api.get<Node>(`/nodes/${id}/status`)
+export const createNode = (data: NodeSummary) => api.post<NodeSummary>('/nodes', data)
+export const updateNode = (id: string, data: NodeSummary) => api.put<NodeSummary>(`/nodes/${id}`, data)
 export const deleteNode = (id: string) => api.delete(`/nodes/${id}`)
-export const pollNode = (id: string) => api.post(`/nodes/${id}/poll`)
+export const pollNode = (id: string) => api.get<Node>(`/nodes/${id}/status`)

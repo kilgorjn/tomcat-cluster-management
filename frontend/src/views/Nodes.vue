@@ -2,7 +2,7 @@
 import { onMounted, ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNodeStore } from '@/stores/nodes'
-import type { Node } from '@/api/nodes'
+import type { NodeSummary } from '@/api/nodes'
 
 const store = useNodeStore()
 onMounted(() => store.fetchAll())
@@ -11,14 +11,13 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 
-const emptyForm = (): Node => ({
+const emptyForm = (): NodeSummary => ({
   node_id: '',
   hostname: '',
   ip_address: '',
   agent_port: 9001,
-  tomcats: {},
 })
-const form = reactive<Node>(emptyForm())
+const form = reactive<NodeSummary>(emptyForm())
 
 function openCreate() {
   Object.assign(form, emptyForm())
@@ -26,14 +25,24 @@ function openCreate() {
   dialogVisible.value = true
 }
 
-function openEdit(node: Node) {
-  Object.assign(form, JSON.parse(JSON.stringify(node)))
+function openEdit(node: NodeSummary) {
+  // Only copy connection fields — never send live tomcat runtime state back to the backend
+  Object.assign(form, {
+    node_id: node.node_id,
+    hostname: node.hostname,
+    ip_address: node.ip_address,
+    agent_port: node.agent_port,
+  })
   isEdit.value = true
   dialogVisible.value = true
 }
 
-async function handleDelete(node: Node) {
-  await ElMessageBox.confirm(`Delete node "${node.node_id}"?`, 'Confirm', { type: 'warning' })
+async function handleDelete(node: NodeSummary) {
+  try {
+    await ElMessageBox.confirm(`Delete node "${node.node_id}"?`, 'Confirm', { type: 'warning' })
+  } catch {
+    return // user cancelled
+  }
   try {
     await store.remove(node.node_id)
     ElMessage.success('Node deleted')
@@ -55,10 +64,10 @@ async function handleSubmit() {
   submitting.value = true
   try {
     if (isEdit.value) {
-      await store.update(form.node_id, JSON.parse(JSON.stringify(form)))
+      await store.update(form.node_id, { ...form })
       ElMessage.success('Node updated')
     } else {
-      await store.create(JSON.parse(JSON.stringify(form)))
+      await store.create({ ...form })
       ElMessage.success('Node created')
     }
     dialogVisible.value = false
@@ -80,6 +89,12 @@ function agentTagType(status: string | undefined) {
   if (status === 'offline') return 'danger'
   return 'info'
 }
+
+async function handleRowExpand(row: NodeSummary) {
+  if (!store.nodeDetails[row.node_id]) {
+    await store.poll(row.node_id)
+  }
+}
 </script>
 
 <template>
@@ -92,24 +107,35 @@ function agentTagType(status: string | undefined) {
     </div>
 
     <el-card shadow="never">
-      <el-table :data="store.nodes" stripe v-loading="store.loading">
+      <el-table
+        :data="store.nodes"
+        stripe
+        v-loading="store.loading"
+        @expand-change="(row: NodeSummary) => handleRowExpand(row)"
+      >
         <el-table-column type="expand">
           <template #default="{ row }">
             <div class="px-4 py-2">
-              <el-table :data="Object.values(row.tomcats)" size="small" class="w-full">
+              <div v-if="!store.nodeDetails[row.node_id]" class="text-sm text-gray-400 py-2">
+                Loading instance details...
+              </div>
+              <el-table
+                v-else
+                :data="Object.values(store.nodeDetails[row.node_id].tomcats)"
+                size="small"
+                class="w-full"
+              >
                 <el-table-column prop="app_id" label="App ID" />
-                <el-table-column prop="instance_port" label="Port" width="80" />
-                <el-table-column prop="ajp_port" label="AJP" width="80" />
                 <el-table-column label="Status" width="100">
                   <template #default="{ row: tc }">
                     <el-tag :type="statusTagType(tc.status)" size="small">{{ tc.status }}</el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column prop="pid" label="PID" width="80" />
-                <el-table-column prop="health_status" label="Health" width="100">
+                <el-table-column label="Health" width="100">
                   <template #default="{ row: tc }">
-                    <el-tag :type="tc.health_status === 'healthy' ? 'success' : 'warning'" size="small">
-                      {{ tc.health_status ?? 'unknown' }}
+                    <el-tag :type="tc.health === 'healthy' ? 'success' : 'warning'" size="small">
+                      {{ tc.health ?? 'unknown' }}
                     </el-tag>
                   </template>
                 </el-table-column>
@@ -129,7 +155,7 @@ function agentTagType(status: string | undefined) {
           </template>
         </el-table-column>
         <el-table-column label="Instances" width="90">
-          <template #default="{ row }">{{ Object.keys(row.tomcats).length }}</template>
+          <template #default="{ row }">{{ row.tomcat_count ?? 0 }}</template>
         </el-table-column>
         <el-table-column label="Actions" width="200" align="right">
           <template #default="{ row }">

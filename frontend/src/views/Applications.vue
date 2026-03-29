@@ -27,7 +27,11 @@ function openEdit(app: Application) {
 }
 
 async function handleDelete(app: Application) {
-  await ElMessageBox.confirm(`Delete application "${app.app_id}"?`, 'Confirm', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`Delete application "${app.app_id}"?`, 'Confirm', { type: 'warning' })
+  } catch {
+    return // user cancelled
+  }
   try {
     await store.remove(app.app_id)
     ElMessage.success('Application deleted')

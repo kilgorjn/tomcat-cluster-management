@@ -41,7 +41,11 @@ function openEdit(c: Cluster) {
 }
 
 async function handleDelete(c: Cluster) {
-  await ElMessageBox.confirm(`Delete cluster "${c.cluster_id}"?`, 'Confirm', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`Delete cluster "${c.cluster_id}"?`, 'Confirm', { type: 'warning' })
+  } catch {
+    return // user cancelled
+  }
   try {
     await clusterStore.remove(c.cluster_id)
     ElMessage.success('Cluster deleted')
@@ -72,8 +76,14 @@ async function handleSubmit() {
 // Cluster actions
 async function handleStop(id: string) {
   try {
+    await ElMessageBox.confirm(`Stop all Tomcat instances in cluster "${id}"?`, 'Confirm Stop', { type: 'warning' })
+  } catch {
+    return // user cancelled
+  }
+  try {
     const res = await clusterStore.stopAll(id)
     ElMessage.success(`Stopped ${res.data.stopped} instance(s)`)
+    await clusterStore.fetchAllStatuses()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail ?? 'Stop failed')
   }
@@ -83,6 +93,7 @@ async function handleStart(id: string) {
   try {
     const res = await clusterStore.startAll(id)
     ElMessage.success(`Started ${res.data.started} instance(s)`)
+    await clusterStore.fetchAllStatuses()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail ?? 'Start failed')
   }

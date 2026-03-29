@@ -146,17 +146,9 @@ async def delete_cluster(cluster_id: str) -> Dict[str, Any]:
 
 @router.get("/clusters")
 async def list_clusters() -> Dict[str, Any]:
-    """Return list of all clusters with status summary."""
+    """Return list of all clusters with full configuration."""
     clusters = _get_clusters()
-    cluster_list = []
-    for cluster in clusters.values():
-        cluster_list.append({
-            "cluster_id": cluster.cluster_id,
-            "app_id": cluster.app_id,
-            "policy_mode": cluster.policy.mode,
-            "node_count": len(cluster.nodes),
-        })
-    return {"clusters": cluster_list}
+    return {"clusters": [c.model_dump() for c in clusters.values()]}
 
 
 @router.get("/clusters/{cluster_id}")

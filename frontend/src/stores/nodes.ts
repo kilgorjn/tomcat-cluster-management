@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as api from '@/api/nodes'
-import type { Node } from '@/api/nodes'
+import type { NodeSummary, Node } from '@/api/nodes'
 
 export const useNodeStore = defineStore('nodes', () => {
-  const nodes = ref<Node[]>([])
+  const nodes = ref<NodeSummary[]>([])
+  // Cache of full node detail keyed by node_id, populated on poll/expand
+  const nodeDetails = ref<Record<string, Node>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -21,26 +23,31 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
-  async function create(data: Node) {
-    const res = await api.createNode(data)
-    nodes.value.push(res.data)
+  async function create(data: NodeSummary) {
+    await api.createNode(data)
+    await fetchAll()
   }
 
-  async function update(id: string, data: Node) {
-    const res = await api.updateNode(id, data)
-    const idx = nodes.value.findIndex((n) => n.node_id === id)
-    if (idx !== -1) nodes.value[idx] = res.data
+  async function update(id: string, data: NodeSummary) {
+    await api.updateNode(id, data)
+    await fetchAll()
   }
 
   async function remove(id: string) {
     await api.deleteNode(id)
     nodes.value = nodes.value.filter((n) => n.node_id !== id)
+    delete nodeDetails.value[id]
   }
 
   async function poll(id: string) {
-    await api.pollNode(id)
-    await fetchAll()
+    const res = await api.pollNode(id)
+    nodeDetails.value[id] = res.data
+    // Sync summary agent_status from the polled detail
+    const idx = nodes.value.findIndex((n) => n.node_id === id)
+    if (idx !== -1) {
+      nodes.value[idx] = { ...nodes.value[idx], agent_status: res.data.agent_status }
+    }
   }
 
-  return { nodes, loading, error, fetchAll, create, update, remove, poll }
+  return { nodes, nodeDetails, loading, error, fetchAll, create, update, remove, poll }
 })
