@@ -604,6 +604,17 @@ GET /api/clusters
 GET /api/clusters/{cluster-id}
   Return: Cluster config + current state
 
+POST /api/clusters
+  Body: { "cluster_id": "cluster-1", "app_id": "app-a", "nodes": ["node-1"], "policy": {...}, "deployment": {...} }
+  Return: Created cluster (201). Returns 409 if cluster_id already exists, 400 if app_id not found.
+
+PUT /api/clusters/{cluster-id}
+  Body: { "app_id": "app-a", "nodes": [...], "policy": {...}, "deployment": {...} }
+  Return: Updated cluster. Returns 404 if not found, 400 if app_id not found.
+
+DELETE /api/clusters/{cluster-id}
+  Removes cluster and its YAML config file. Returns 404 if not found.
+
 POST /api/clusters/{cluster-id}/policy
   Body: { "mode": "AUTO" | "MANUAL", "min_instances": 5, "max_instances": 10 }
 
@@ -642,17 +653,28 @@ POST /api/clusters/{cluster-id}/rollback
   Rollback to previous WAR backup (if available)
 ```
 
-#### Node Monitoring
+#### Node Management
 
 ```
 GET /api/nodes
-  Return: { "nodes": [{"node_id": "node-1", "status": "healthy", "agent_version": "1.0"}] }
+  Return: { "nodes": [{"node_id": "node-1", "status": "healthy", ...}] }
+
+POST /api/nodes
+  Body: { "node_id": "node-1", "hostname": "tomcat-node-1.internal", "ip_address": "192.168.1.10", "agent_port": 9001 }
+  Return: Created node (201). Returns 409 if node_id already exists.
+
+PUT /api/nodes/{node-id}
+  Body: { "hostname": "...", "ip_address": "...", "agent_port": 9001 }
+  Return: Updated node. Returns 404 if not found.
+
+DELETE /api/nodes/{node-id}
+  Removes node and its YAML config file. Returns 404 if not found, 409 if referenced by a cluster.
 
 GET /api/nodes/{node-id}/status
   Return: Current state of all Tomcats on node
 
 GET /api/nodes/{node-id}/tomcats/{app-id}/status
-  Return: { "status": "running", "version": "v1.2.3", "health": "healthy", "pid": 1234 }
+  Return: { "status": "running", "health": "healthy", "pid": 1234 }
 ```
 
 #### Manual Control (Operations)
