@@ -1,0 +1,9 @@
+node_id: node-2
+hostname: tomcat-node-2.internal
+ip_address: 192.168.1.11
+agent_port: 9001
+tomcats:
+  - app_id: app-a
+    instance_port: 9001
+    ajp_port: 8009
+    status: running

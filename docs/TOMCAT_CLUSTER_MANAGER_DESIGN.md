@@ -61,29 +61,37 @@ The system integrates with Harness for WAR file staging and deployment coordinat
 
 ## 3. Deployment Architecture
 
-### 3.1 Cluster Structure
+### 3.1 Application and Cluster Structure
 
-Each cluster is a logical grouping of Tomcat instances across multiple nodes:
+An **Application** is a first-class entity representing a deployable WAR. A **Cluster** is a logical grouping of Tomcat instances across multiple nodes that runs a specific application.
 
 ```
-Cluster-1 (min=5, max=10, current=8)
-├─ node-1: tomcat-app-a (running)
-├─ node-2: tomcat-app-a (running)
-├─ node-3: tomcat-app-a (running)
-├─ node-4: tomcat-app-a (running)
-├─ node-5: tomcat-app-a (running)
-├─ node-6: tomcat-app-a (stopped - policy constraint)
-├─ node-7: tomcat-app-a (stopped - policy constraint)
-├─ node-8: tomcat-app-a (running)
-├─ node-9: tomcat-app-a (running)
-└─ node-10: tomcat-app-a (stopped - policy constraint)
+Application: BrokerageMobileWeb
+├── war_filename: BrokerageMobileWeb.war   (canonical name written to webapps/)
+├── context_path: /BMW                     (Tomcat context path)
+└── Clusters:
+    ├── Cluster-1 (min=5, max=10, current=8)
+    │   ├─ node-1: BrokerageMobileWeb (running)
+    │   ├─ node-2: BrokerageMobileWeb (running)
+    │   ├─ node-3: BrokerageMobileWeb (running)
+    │   ├─ node-4: BrokerageMobileWeb (running)
+    │   ├─ node-5: BrokerageMobileWeb (running)
+    │   ├─ node-6: BrokerageMobileWeb (stopped - policy constraint)
+    │   ├─ node-7: BrokerageMobileWeb (stopped - policy constraint)
+    │   ├─ node-8: BrokerageMobileWeb (running)
+    │   ├─ node-9: BrokerageMobileWeb (running)
+    │   └─ node-10: BrokerageMobileWeb (stopped - policy constraint)
+    └── Cluster-2 (staging, min=1, max=2)
+        └─ ...
 ```
 
 **Key characteristics:**
-- All nodes in a cluster run the same WAR (same app version)
+- All nodes in a cluster run the same application
 - Policy controls how many are active (running vs. stopped)
-- Deployment applies to all nodes simultaneously
+- Deployment applies to all nodes in a cluster simultaneously
 - WAR persists on disk after stop; only process is killed
+- TCM does not manage versioning — that is owned by the deployment tool (Harness/UCD)
+- The versioned WAR filename (e.g. `BrokerageMobileWeb-1.2.3.war`) is a staging artifact; the version is stripped before the WAR is written to `webapps/`
 
 ### 3.2 Tomcat Instance Organization
 
@@ -171,6 +179,10 @@ Per node (e.g., node-1):
 /etc/cluster-manager/
 ├── .git/                          # Git repository for audit trail
 ├── config.yaml                    # Global manager config
+├── applications/
+│   ├── app-a.yaml
+│   ├── app-b.yaml
+│   └── ...
 ├── clusters/
 │   ├── cluster-1.yaml
 │   ├── cluster-2.yaml
@@ -183,17 +195,25 @@ Per node (e.g., node-1):
     └── deployment-2024-01-15.log
 ```
 
+**Application config example (app-a.yaml):**
+
+```yaml
+app_id: app-a
+name: BrokerageMobileWeb
+war_filename: BrokerageMobileWeb.war   # canonical name written to webapps/; version stripped at deploy time
+context_path: /BMW                     # Tomcat context path (independent of war_filename)
+```
+
 **Cluster config example (cluster-1.yaml):**
 
 ```yaml
 cluster_id: cluster-1
-app_id: app-a
-app_path: /opt/tomcats/app-a
+app_id: app-a                     # reference to application
 policy:
-  mode: AUTO                    # AUTO or MANUAL
+  mode: AUTO                      # AUTO or MANUAL
   min_instances: 5
   max_instances: 10
-  policy_check_interval: 30     # seconds
+  policy_check_interval: 30       # seconds
 nodes:
   - node-1
   - node-2
@@ -206,11 +226,10 @@ nodes:
   - node-9
   - node-10
 deployment:
-  graceful_stop_timeout: 30     # seconds
-  startup_timeout: 60           # seconds
+  graceful_stop_timeout: 30       # seconds
+  startup_timeout: 60             # seconds
   health_check_endpoint: /health
-  health_check_timeout: 10      # seconds
-current_version: v1.2.3
+  health_check_timeout: 10        # seconds
 ```
 
 **Node config example (node-1.yaml):**
@@ -225,17 +244,14 @@ tomcats:
     instance_port: 9001
     ajp_port: 8009
     status: running
-    version: v1.2.3
   - app_id: app-b
     instance_port: 9002
     ajp_port: 8010
     status: stopped
-    version: v1.1.0
   - app_id: app-c
     instance_port: 9003
     ajp_port: 8011
     status: running
-    version: v2.0.0
 ```
 
 ---
@@ -264,13 +280,14 @@ tomcats:
    - PID file tracking: `/var/run/tomcat-{app-id}.pid`
 
 2. **Deployment Execution**
-   - Receive WAR from manager via HTTP PUT/POST
-   - Store WAR locally: `/opt/tomcats/{app_id}/webapps/app.war`
-   - Backup previous WAR: `app.war.1`, `app.war.2`, etc.
+   - Receive WAR bytes + `war_filename` + `context_path` from console
+   - Strip version from source filename; write using canonical `war_filename` (e.g. `BrokerageMobileWeb.war`)
+   - Store WAR locally: `/opt/tomcats/{app_id}/webapps/{war_filename}`
+   - Backup previous WAR: `{war_filename}.1`, `{war_filename}.2`, etc.
    - Execute deployment steps:
      1. Gracefully stop Tomcat (via `catalina.sh stop`)
      2. Backup current WAR
-     3. Deploy new WAR to webapps/
+     3. Deploy new WAR to `webapps/` using canonical filename
      4. Start Tomcat
      5. Wait for health check (configurable timeout)
      6. Report success/failure
@@ -298,7 +315,7 @@ Response: { "commands": [{"id": "cmd-123", "action": "deploy", "app_id": "app-a"
 POST /nodes/{node-id}/tomcats/{app-id}/start
 POST /nodes/{node-id}/tomcats/{app-id}/stop
 POST /nodes/{node-id}/tomcats/{app-id}/deploy
-  { "war_bytes": <binary>, "version": "v1.2.3" }
+  { "war_bytes": <binary>, "war_filename": "BrokerageMobileWeb.war", "context_path": "/BMW", "version": "v1.2.3" }
 GET /nodes/{node-id}/tomcats/{app-id}/status
   Response: { "status": "running", "version": "v1.2.3", "health": "healthy" }
 ```
@@ -342,8 +359,8 @@ Response: {
    - (Path configurable)
 
 4. Harness: Trigger manager deployment
-   - POST /clusters/{cluster-id}/deploy
-   - { "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/app.war", 
+   - POST /api/clusters/{cluster-id}/deploy
+   - { "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/BrokerageMobileWeb-1.2.3.war",
        "version": "v1.2.3" }
 ```
 
@@ -351,8 +368,9 @@ Response: {
 ```
 5. Manager: Push WAR to all nodes
    - Reads WAR from staging path
+   - Resolves Application config (war_filename, context_path) from cluster's app_id
    - For each node in cluster:
-     a) Sends WAR bytes to node agent via POST /nodes/{node-id}/tomcats/{app-id}/deploy
+     a) Sends WAR bytes + war_filename + context_path to node agent via POST /nodes/{node-id}/tomcats/{app-id}/deploy
      b) Waits for agent confirmation (WAR received)
    - Once all nodes confirm WAR received, proceeds to next phase
 
@@ -559,40 +577,60 @@ worker.cluster-2.balance_workers=node-1,node-2,...
 
 ### 9.1 Core Endpoints
 
+#### Application Management
+
+```
+GET /api/applications
+  Return: { "applications": [{"app_id": "app-a", "name": "BrokerageMobileWeb", ...}] }
+
+GET /api/applications/{app-id}
+  Return: Application config
+
+POST /api/applications
+  Body: { "app_id": "app-a", "name": "BrokerageMobileWeb", "war_filename": "BrokerageMobileWeb.war", "context_path": "/BMW" }
+
+PUT /api/applications/{app-id}
+  Body: { "name": "...", "war_filename": "...", "context_path": "..." }
+
+DELETE /api/applications/{app-id}
+```
+
 #### Cluster Management
 
 ```
-GET /clusters
+GET /api/clusters
   Return: { "clusters": [{"cluster_id": "cluster-1", "status": "healthy", ...}] }
 
-GET /clusters/{cluster-id}
+GET /api/clusters/{cluster-id}
   Return: Cluster config + current state
 
-POST /clusters/{cluster-id}/policy
+POST /api/clusters/{cluster-id}/policy
   Body: { "mode": "AUTO" | "MANUAL", "min_instances": 5, "max_instances": 10 }
 
-POST /clusters/{cluster-id}/stop-all
+POST /api/clusters/{cluster-id}/stop-all
   Stop all Tomcats in cluster (blocks until complete or timeout)
 
-POST /clusters/{cluster-id}/start-all
+POST /api/clusters/{cluster-id}/start-all
   Start Tomcats until min_instances reached
 
-GET /clusters/{cluster-id}/status
+GET /api/clusters/{cluster-id}/status
   Return: { "running": 8, "stopped": 2, "unhealthy": 0, "policy_mode": "AUTO" }
 ```
 
 #### Deployment
 
 ```
-POST /clusters/{cluster-id}/deploy
+POST /api/clusters/{cluster-id}/deploy
   Body: {
-    "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/app.war",
+    "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/BrokerageMobileWeb-1.2.3.war",
     "version": "v1.2.3"
   }
   Return: { "deployment_id": "deploy-001", "status": "in_progress" }
+  Note: war_filename and context_path are resolved from the cluster's Application config.
+        The versioned source filename is stripped before the WAR is written to webapps/.
 
-GET /clusters/{cluster-id}/deployments/{deployment-id}
-  Return: { 
+GET /api/clusters/{cluster-id}/deployments/{deployment-id}
+  Return: {
     "status": "completed" | "in_progress" | "failed",
     "version": "v1.2.3",
     "nodes_completed": 8,
@@ -600,52 +638,60 @@ GET /clusters/{cluster-id}/deployments/{deployment-id}
     "errors": []
   }
 
-POST /clusters/{cluster-id}/rollback
-  Rollback to previous version (if available)
+POST /api/clusters/{cluster-id}/rollback
+  Rollback to previous WAR backup (if available)
 ```
 
 #### Node Monitoring
 
 ```
-GET /nodes
+GET /api/nodes
   Return: { "nodes": [{"node_id": "node-1", "status": "healthy", "agent_version": "1.0"}] }
 
-GET /nodes/{node-id}/status
+GET /api/nodes/{node-id}/status
   Return: Current state of all Tomcats on node
 
-GET /nodes/{node-id}/tomcats/{app-id}/status
+GET /api/nodes/{node-id}/tomcats/{app-id}/status
   Return: { "status": "running", "version": "v1.2.3", "health": "healthy", "pid": 1234 }
 ```
 
 #### Manual Control (Operations)
 
 ```
-POST /nodes/{node-id}/tomcats/{app-id}/start
-POST /nodes/{node-id}/tomcats/{app-id}/stop
-POST /nodes/{node-id}/tomcats/{app-id}/restart
+POST /api/nodes/{node-id}/tomcats/{app-id}/start
+POST /api/nodes/{node-id}/tomcats/{app-id}/stop
+POST /api/nodes/{node-id}/tomcats/{app-id}/restart
 ```
 
 ---
 
 ## 10. Data Model
 
-### 10.1 Cluster State
+### 10.1 Application
+
+```python
+class Application:
+    app_id: str                    # e.g., "app-a"
+    name: str                      # e.g., "BrokerageMobileWeb"
+    war_filename: str              # e.g., "BrokerageMobileWeb.war" — canonical name written to webapps/
+    context_path: str              # e.g., "/BMW" — Tomcat context path (independent of war_filename)
+```
+
+### 10.2 Cluster State
 
 ```python
 class Cluster:
     cluster_id: str                # e.g., "cluster-1"
-    app_id: str                    # e.g., "app-a"
-    app_path: str                  # e.g., "/opt/tomcats/app-a"
+    app_id: str                    # FK → Application.app_id
     nodes: List[str]               # node IDs in this cluster
-    
+
     policy: ClusterPolicy
-    current_version: str           # e.g., "v1.2.3"
-    previous_version: Optional[str]
-    
+    deployment: DeploymentConfig
+
     deployment_status: DeploymentStatus  # current or last deployment
 ```
 
-### 10.2 Node State
+### 10.3 Node State
 
 ```python
 class Node:
@@ -655,25 +701,24 @@ class Node:
     agent_port: int                # 9001
     agent_status: str              # "online", "offline", "unhealthy"
     last_heartbeat: datetime
-    
+
     tomcats: Dict[str, TomcatInstance]
 ```
 
-### 10.3 Tomcat Instance State
+### 10.4 Tomcat Instance State
 
 ```python
 class TomcatInstance:
     app_id: str                    # e.g., "app-a"
     instance_port: int             # 9001, 9002, 9003, ...
     ajp_port: int                  # 8009, 8010, 8011, ...
-    
+
     status: str                    # "running", "stopped", "starting", "crashed"
-    current_version: str           # e.g., "v1.2.3"
     pid: Optional[int]
-    
+
     health_status: str             # "healthy", "unhealthy", "unknown"
     last_health_check: datetime
-    
+
     created_at: datetime
     last_state_change: datetime
 ```
@@ -691,8 +736,9 @@ class TomcatInstance:
    - Stage: Save to `/opt/cluster-manager/staging/{cluster-id}/{app-id}/app.war`
 
 2. **Trigger TCM deployment**
-   - API call: `POST http://manager-console:9000/clusters/{cluster-id}/deploy`
-   - Payload: `{ "war_path": "...", "version": "v1.2.3" }`
+   - API call: `POST http://manager-console:9000/api/clusters/{cluster-id}/deploy`
+   - Payload: `{ "war_path": "/opt/cluster-manager/staging/cluster-1/app-a/BrokerageMobileWeb-1.2.3.war", "version": "v1.2.3" }`
+   - TCM resolves `war_filename` and `context_path` from the cluster's Application config
    - Wait for response (polling or webhook)
 
 3. **Deploy static content** (parallel)

@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
+from console.models.application import Application
 from console.models.cluster import Cluster
 from console.models.deployment import DeployRequest
 from console.services.deployment_service import DeploymentService
@@ -22,6 +23,10 @@ def _get_deployment_service() -> DeploymentService:
     return router.deployment_service  # type: ignore[attr-defined]
 
 
+def _get_applications() -> Dict[str, Application]:
+    return router.applications  # type: ignore[attr-defined]
+
+
 @router.post("/clusters/{cluster_id}/deploy")
 async def deploy(cluster_id: str, request: DeployRequest) -> Dict[str, Any]:
     """Trigger a deployment to all nodes in a cluster.
@@ -35,6 +40,15 @@ async def deploy(cluster_id: str, request: DeployRequest) -> Dict[str, Any]:
     if cluster is None:
         raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
 
+    # Resolve the Application for this cluster's app_id
+    applications = _get_applications()
+    application = applications.get(cluster.app_id)
+    if application is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application not found for cluster {cluster_id}: {cluster.app_id}",
+        )
+
     deployment_service = _get_deployment_service()
 
     try:
@@ -42,6 +56,8 @@ async def deploy(cluster_id: str, request: DeployRequest) -> Dict[str, Any]:
             cluster=cluster,
             war_path=request.war_path,
             version=request.version,
+            war_filename=application.war_filename,
+            context_path=application.context_path,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -81,23 +97,14 @@ async def get_deployment_status(
 async def rollback(cluster_id: str) -> Dict[str, Any]:
     """Rollback cluster to previous version.
 
-    Phase 1 MVP: Returns basic rollback status. Full rollback
-    orchestration will be implemented in Phase 3.
+    Rollback is now managed by the external deployment tool (Harness/UCD).
     """
     clusters = _get_clusters()
     cluster = clusters.get(cluster_id)
     if cluster is None:
         raise HTTPException(status_code=404, detail=f"Cluster not found: {cluster_id}")
 
-    if cluster.previous_version is None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"No previous version available for cluster {cluster_id}",
-        )
-
-    return {
-        "cluster_id": cluster_id,
-        "message": "Rollback support is limited in Phase 1 MVP",
-        "current_version": cluster.current_version,
-        "previous_version": cluster.previous_version,
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Rollback is managed by the external deployment tool (Harness/UCD)",
+    )

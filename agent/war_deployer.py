@@ -37,61 +37,96 @@ class WarDeployer:
 
         Keeps the last MAX_WAR_BACKUPS backups.
         """
+        self._rotate_backups_for(app_id, "app.war")
+
+    def _rotate_backups_for(self, app_id: str, war_filename: str) -> None:
+        """Rotate WAR backups for a given filename.
+
+        Keeps the last MAX_WAR_BACKUPS backups.
+        """
+        webapps = self._webapps_dir(app_id)
+
+        def _backup(index: int) -> str:
+            return os.path.join(webapps, f"{war_filename}.{index}")
+
         # Remove oldest backup if it exists
-        oldest = self._backup_path(app_id, MAX_WAR_BACKUPS)
+        oldest = _backup(MAX_WAR_BACKUPS)
         if os.path.exists(oldest):
             os.remove(oldest)
             logger.debug("Removed oldest backup: %s", oldest)
 
         # Rotate existing backups
         for i in range(MAX_WAR_BACKUPS - 1, 0, -1):
-            src = self._backup_path(app_id, i)
-            dst = self._backup_path(app_id, i + 1)
+            src = _backup(i)
+            dst = _backup(i + 1)
             if os.path.exists(src):
                 shutil.move(src, dst)
                 logger.debug("Rotated backup: %s -> %s", src, dst)
 
         # Copy current WAR to backup slot 1 (original is overwritten by deploy)
-        war = self._war_path(app_id)
+        war = os.path.join(webapps, war_filename)
         if os.path.exists(war):
-            backup1 = self._backup_path(app_id, 1)
+            backup1 = _backup(1)
             shutil.copy2(war, backup1)
             logger.info("Backed up current WAR: %s -> %s", war, backup1)
 
+    @staticmethod
+    def _sanitize_war_filename(war_filename: str) -> str:
+        """Sanitize war_filename to prevent path traversal.
+
+        Strips to basename, rejects path separators and control characters.
+        """
+        safe = os.path.basename(war_filename)
+        if not safe or not safe.endswith(".war") or safe != war_filename:
+            raise ValueError(f"Invalid war_filename: {war_filename!r}")
+        if any(c in safe for c in ("\x00", "\n", "\r")):
+            raise ValueError(f"Invalid characters in war_filename: {war_filename!r}")
+        return safe
+
     def deploy_war(
-        self, app_id: str, war_bytes: bytes, version: str
+        self,
+        app_id: str,
+        war_bytes: bytes,
+        version: str,
+        war_filename: str = "app.war",
+        context_path: str = "/",
     ) -> bool:
         """Deploy a new WAR file for an application.
 
         1. Backup current WAR (rotate existing backups).
-        2. Write new WAR bytes to webapps/app.war.
+        2. Write new WAR bytes to webapps/{war_filename}.
 
         Args:
             app_id: Application identifier.
             war_bytes: WAR file content as bytes.
             version: Version string for logging.
+            war_filename: Canonical WAR filename, e.g. 'BrokerageMobileWeb.war'.
+            context_path: Tomcat context path (logged for reference).
 
         Returns:
             True if deployment successful, False otherwise.
         """
+        war_filename = self._sanitize_war_filename(war_filename)
         webapps = self._webapps_dir(app_id)
-        war_file = self._war_path(app_id)
+        war_file = os.path.join(webapps, war_filename)
 
         # Ensure webapps directory exists
         os.makedirs(webapps, exist_ok=True)
 
         try:
-            # Rotate backups
-            self._rotate_backups(app_id)
+            # Rotate backups using the dynamic filename
+            self._rotate_backups_for(app_id, war_filename)
 
             # Write new WAR
             with open(war_file, "wb") as f:
                 f.write(war_bytes)
 
             logger.info(
-                "Deployed WAR for %s (version: %s, size: %d bytes)",
+                "Deployed WAR for %s (version: %s, file: %s, context: %s, size: %d bytes)",
                 app_id,
                 version,
+                war_filename,
+                context_path,
                 len(war_bytes),
             )
             return True

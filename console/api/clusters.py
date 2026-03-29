@@ -42,7 +42,6 @@ async def list_clusters() -> Dict[str, Any]:
         cluster_list.append({
             "cluster_id": cluster.cluster_id,
             "app_id": cluster.app_id,
-            "current_version": cluster.current_version,
             "policy_mode": cluster.policy.mode,
             "node_count": len(cluster.nodes),
         })

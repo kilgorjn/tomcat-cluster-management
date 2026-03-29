@@ -49,6 +49,8 @@ class DeploymentService:
         cluster: Cluster,
         war_path: str,
         version: str,
+        war_filename: str = "app.war",
+        context_path: str = "/",
     ) -> DeploymentStatus:
         """Start a deployment to all nodes in a cluster.
 
@@ -95,7 +97,8 @@ class DeploymentService:
         # Launch background deployment task with top-level error handling
         asyncio.create_task(
             self._safe_execute_deployment(
-                deployment, cluster, node_ids, war_bytes, version
+                deployment, cluster, node_ids, war_bytes, version,
+                war_filename, context_path,
             )
         )
 
@@ -108,11 +111,14 @@ class DeploymentService:
         node_ids: List[str],
         war_bytes: bytes,
         version: str,
+        war_filename: str = "app.war",
+        context_path: str = "/",
     ) -> None:
         """Wrapper that catches exceptions so the task never fails silently."""
         try:
             await self._execute_deployment(
-                deployment, cluster, node_ids, war_bytes, version
+                deployment, cluster, node_ids, war_bytes, version,
+                war_filename, context_path,
             )
         except Exception as exc:
             logger.exception(
@@ -131,6 +137,8 @@ class DeploymentService:
         node_ids: List[str],
         war_bytes: bytes,
         version: str,
+        war_filename: str = "app.war",
+        context_path: str = "/",
     ) -> None:
         """Execute the deployment across nodes with bounded parallelism.
 
@@ -140,6 +148,8 @@ class DeploymentService:
             node_ids: List of node IDs to deploy to.
             war_bytes: WAR file content.
             version: Version string.
+            war_filename: Canonical WAR filename.
+            context_path: Tomcat context path.
         """
         semaphore = asyncio.Semaphore(self._max_parallel_nodes)
 
@@ -151,7 +161,8 @@ class DeploymentService:
                     node_id,
                 )
                 result = await self._node_manager.deploy_to_node(
-                    node_id, cluster.app_id, war_bytes, version
+                    node_id, cluster.app_id, war_bytes, version,
+                    war_filename, context_path,
                 )
                 if result and result.get("status") != "error":
                     async with self._lock:
@@ -186,8 +197,6 @@ class DeploymentService:
         # Determine final status
         if deployment.nodes_completed == deployment.nodes_total:
             deployment.status = DEPLOY_COMPLETED
-            cluster.previous_version = cluster.current_version
-            cluster.current_version = version
             logger.info(
                 "Deployment %s completed successfully", deployment.deployment_id
             )

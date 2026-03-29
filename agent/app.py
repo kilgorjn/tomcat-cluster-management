@@ -187,12 +187,29 @@ async def deploy_tomcat(
     controller = _get_controller()
 
     version = request.headers.get("X-Deploy-Version", "unknown")
+    war_filename = request.headers.get("X-War-Filename", "app.war")
+    context_path = request.headers.get("X-Context-Path", "/")
+
+    # Validate war_filename to prevent path traversal
+    if (
+        os.path.basename(war_filename) != war_filename
+        or not war_filename.endswith(".war")
+        or any(c in war_filename for c in ("\x00", "\n", "\r"))
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid war_filename: must be a simple *.war filename without path separators",
+        )
+
     war_bytes = await request.body()
 
     if not war_bytes:
         raise HTTPException(status_code=400, detail="Empty WAR file")
 
-    return await controller.deploy(app_id, war_bytes, version)
+    return await controller.deploy(
+        app_id, war_bytes, version,
+        war_filename=war_filename, context_path=context_path,
+    )
 
 
 @app.get("/health")
