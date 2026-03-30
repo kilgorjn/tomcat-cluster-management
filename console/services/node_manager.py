@@ -251,13 +251,14 @@ class NodeManager:
             return None
 
     async def undeploy_from_node(
-        self, node_id: str, app_id: str
+        self, node_id: str, app_id: str, war_filename: str = "app.war"
     ) -> Optional[Dict[str, Any]]:
         """Tell a node agent to stop and remove an application.
 
         Args:
             node_id: Target node identifier.
             app_id: Target application identifier.
+            war_filename: Canonical WAR filename to remove.
 
         Returns:
             Response dict from agent, or None on failure.
@@ -270,7 +271,9 @@ class NodeManager:
         url = f"{self._agent_url(node)}/nodes/{node_id}/tomcats/{app_id}"
         try:
             async with httpx.AsyncClient(timeout=self._node_timeout) as client:
-                response = await client.delete(url)
+                response = await client.delete(
+                    url, headers={"X-War-Filename": war_filename}
+                )
                 response.raise_for_status()
                 return response.json()
         except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:

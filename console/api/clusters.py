@@ -121,8 +121,11 @@ async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
     removed_nodes = set(previous.nodes) - set(updated.nodes)
     if removed_nodes:
         node_manager = _get_node_manager()
+        applications = _get_applications()
+        application = applications.get(previous.app_id)
+        war_filename = application.war_filename if application else "app.war"
         for node_id in removed_nodes:
-            result = await node_manager.undeploy_from_node(node_id, previous.app_id)
+            result = await node_manager.undeploy_from_node(node_id, previous.app_id, war_filename)
             if result is not None:
                 logger.info("Undeployed %s from removed node %s", previous.app_id, node_id)
             else:
