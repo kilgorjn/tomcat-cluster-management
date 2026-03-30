@@ -19,26 +19,26 @@ COPY shared/ ./shared/
 
 RUN pip3 install --no-cache-dir --break-system-packages -r agent/requirements.txt
 
-# ── Tomcat instance for app-a ─────────────────────────────────────────────────
+# ── Tomcat instance for MobileApp ─────────────────────────────────────────────────
 # Each app gets its own CATALINA_BASE under /opt/tomcats/{app_id}.
 # The agent's discover_instances() finds any subdir of tomcat_root that has
 # a webapps/ directory. Port is read from conf/server.xml.
 ENV TOMCAT_ROOT=/opt/tomcats
 
 RUN mkdir -p \
-    ${TOMCAT_ROOT}/app-a/conf \
-    ${TOMCAT_ROOT}/app-a/webapps \
-    ${TOMCAT_ROOT}/app-a/logs \
-    ${TOMCAT_ROOT}/app-a/temp \
-    ${TOMCAT_ROOT}/app-a/work \
+    ${TOMCAT_ROOT}/MobileApp/conf \
+    ${TOMCAT_ROOT}/MobileApp/webapps \
+    ${TOMCAT_ROOT}/MobileApp/logs \
+    ${TOMCAT_ROOT}/MobileApp/temp \
+    ${TOMCAT_ROOT}/MobileApp/work \
  # Inherit standard config files from CATALINA_HOME
- && cp ${CATALINA_HOME}/conf/web.xml             ${TOMCAT_ROOT}/app-a/conf/ \
- && cp ${CATALINA_HOME}/conf/context.xml         ${TOMCAT_ROOT}/app-a/conf/ \
- && cp ${CATALINA_HOME}/conf/logging.properties  ${TOMCAT_ROOT}/app-a/conf/
+ && cp ${CATALINA_HOME}/conf/web.xml             ${TOMCAT_ROOT}/MobileApp/conf/ \
+ && cp ${CATALINA_HOME}/conf/context.xml         ${TOMCAT_ROOT}/MobileApp/conf/ \
+ && cp ${CATALINA_HOME}/conf/logging.properties  ${TOMCAT_ROOT}/MobileApp/conf/
 
-# Write a minimal server.xml for app-a:
+# Write a minimal server.xml for MobileApp:
 #   HTTP connector on 8080, AJP on 8009, shutdown on 8005
-RUN cat > ${TOMCAT_ROOT}/app-a/conf/server.xml <<'EOF'
+RUN cat > ${TOMCAT_ROOT}/MobileApp/conf/server.xml <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <Server port="8005" shutdown="SHUTDOWN">
   <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
