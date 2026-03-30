@@ -88,7 +88,12 @@ async def create_cluster(cluster: Cluster) -> Dict[str, Any]:
 
 @router.put("/clusters/{cluster_id}")
 async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
-    """Update an existing cluster. Returns 404 if not found, 400 if app_id not found."""
+    """Update an existing cluster. Returns 404 if not found, 400 if app_id not found.
+
+    If nodes are removed from the cluster, a stop command is sent to each
+    removed node so the app is no longer running on nodes that are no longer
+    members of the cluster.
+    """
     _validate_id(cluster_id, "cluster_id")
 
     async with _cluster_lock:
@@ -110,6 +115,21 @@ async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
             clusters[cluster_id] = previous
             logger.error("Failed to persist cluster %s: %s", cluster_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
+
+    # Stop the app on any nodes that were removed from the cluster.
+    # This runs outside the lock — best-effort, does not roll back the update.
+    removed_nodes = set(previous.nodes) - set(updated.nodes)
+    if removed_nodes:
+        node_manager = _get_node_manager()
+        for node_id in removed_nodes:
+            result = await node_manager.send_command(node_id, previous.app_id, "stop")
+            if result is not None:
+                logger.info("Stopped %s on removed node %s", previous.app_id, node_id)
+            else:
+                logger.warning(
+                    "Could not stop %s on removed node %s (agent unreachable)",
+                    previous.app_id, node_id,
+                )
 
     logger.info("Updated cluster: %s", cluster_id)
     return updated.model_dump()
