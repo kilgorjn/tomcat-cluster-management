@@ -116,18 +116,18 @@ async def update_cluster(cluster_id: str, cluster: Cluster) -> Dict[str, Any]:
             logger.error("Failed to persist cluster %s: %s", cluster_id, exc)
             raise HTTPException(status_code=500, detail="Failed to persist cluster to disk")
 
-    # Stop the app on any nodes that were removed from the cluster.
-    # This runs outside the lock — best-effort, does not roll back the update.
+    # Undeploy the app from any nodes removed from the cluster.
+    # Runs outside the lock — best-effort, does not roll back the cluster update.
     removed_nodes = set(previous.nodes) - set(updated.nodes)
     if removed_nodes:
         node_manager = _get_node_manager()
         for node_id in removed_nodes:
-            result = await node_manager.send_command(node_id, previous.app_id, "stop")
+            result = await node_manager.undeploy_from_node(node_id, previous.app_id)
             if result is not None:
-                logger.info("Stopped %s on removed node %s", previous.app_id, node_id)
+                logger.info("Undeployed %s from removed node %s", previous.app_id, node_id)
             else:
                 logger.warning(
-                    "Could not stop %s on removed node %s (agent unreachable)",
+                    "Could not undeploy %s from removed node %s (agent unreachable)",
                     previous.app_id, node_id,
                 )
 

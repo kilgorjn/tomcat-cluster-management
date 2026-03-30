@@ -249,3 +249,31 @@ class NodeManager:
             logger.error("Failed to deploy to %s/%s: %s", node_id, app_id, exc)
             node.agent_status = AGENT_OFFLINE
             return None
+
+    async def undeploy_from_node(
+        self, node_id: str, app_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Tell a node agent to stop and remove an application.
+
+        Args:
+            node_id: Target node identifier.
+            app_id: Target application identifier.
+
+        Returns:
+            Response dict from agent, or None on failure.
+        """
+        node = self.get_node(node_id)
+        if node is None:
+            logger.error("Node not found: %s", node_id)
+            return None
+
+        url = f"{self._agent_url(node)}/nodes/{node_id}/tomcats/{app_id}"
+        try:
+            async with httpx.AsyncClient(timeout=self._node_timeout) as client:
+                response = await client.delete(url)
+                response.raise_for_status()
+                return response.json()
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
+            logger.error("Failed to undeploy %s from %s: %s", app_id, node_id, exc)
+            node.agent_status = AGENT_OFFLINE
+            return None

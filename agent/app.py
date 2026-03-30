@@ -212,6 +212,14 @@ async def deploy_tomcat(
     )
 
 
+@app.delete("/nodes/{node_id}/tomcats/{app_id}")
+async def undeploy_tomcat(node_id: str, app_id: str) -> Dict[str, Any]:
+    """Stop a Tomcat instance and remove its WAR and expanded directory."""
+    _validate_node_id(node_id)
+    controller = _get_controller()
+    return await controller.undeploy(app_id)
+
+
 @app.get("/health")
 async def health_check() -> Dict[str, str]:
     """Agent health check endpoint."""
