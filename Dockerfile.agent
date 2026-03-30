@@ -2,10 +2,10 @@
 # CATALINA_HOME=/usr/local/tomcat already configured.
 FROM tomcat:10.1-jdk17
 
-# Install Python 3 and runtime tools
+# Install Python 3, runtime tools, and tini (PID 1 init that reaps zombie processes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip \
-    procps \
+    procps tini \
  && rm -rf /var/lib/apt/lists/*
 
 # Remove default webapps (examples, docs, manager) - clean install
@@ -92,4 +92,6 @@ EXPOSE 9001 8080
 ENV CONFIG_PATH=/etc/tcm/local-config.yaml \
     PYTHONPATH=/opt/tcm
 
+# tini as PID 1 ensures zombie Java processes spawned by catalina.sh are reaped
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python3", "-m", "uvicorn", "agent.app:app", "--host", "0.0.0.0", "--port", "9001"]
