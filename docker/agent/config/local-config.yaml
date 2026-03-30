@@ -1,0 +1,19 @@
+role: agent
+
+agent:
+  node_id: node-1
+  port: 9001
+  tomcat_root: /opt/tomcats
+  log_dir: /var/log/tcm
+
+logging:
+  level: INFO
+  format: json
+
+tomcat:
+  graceful_stop_timeout: 30
+  startup_timeout: 60
+  health_check_timeout: 10
+
+process_management:
+  pid_dir: /var/run/tcm

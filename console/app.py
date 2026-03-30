@@ -13,6 +13,8 @@ from typing import AsyncGenerator
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # Add project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -165,6 +167,18 @@ app.include_router(deployments.router, prefix="/api")
 app.include_router(nodes.router, prefix="/api")
 app.include_router(monitoring.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
+
+# Serve Vue frontend static files (built output).
+# Assets (JS/CSS) are served directly from /assets/*; all other non-API paths
+# return index.html so that Vue Router's HTML5 history mode works for deep links.
+_frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+if os.path.isdir(_frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_frontend_dist, "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str) -> FileResponse:  # noqa: F811
+        """SPA catch-all: serve index.html for any non-API, non-asset path."""
+        return FileResponse(os.path.join(_frontend_dist, "index.html"))
 
 
 if __name__ == "__main__":

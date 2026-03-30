@@ -200,6 +200,33 @@ class TomcatController:
             "pid": start_result.get("pid"),
         }
 
+    async def undeploy(self, app_id: str, war_filename: str = "app.war") -> Dict[str, Any]:
+        """Stop a Tomcat instance and remove its WAR and expanded directory.
+
+        Args:
+            app_id: Application identifier.
+            war_filename: Canonical WAR filename to remove.
+
+        Returns:
+            Dict with status and details.
+        """
+        logger.info("Undeploying %s from instance %s", war_filename, app_id)
+
+        # Stop first if running
+        if self.process_manager.get_tomcat_status(app_id) == STATUS_RUNNING:
+            stop_result = await self.stop(app_id)
+            if stop_result["status"] == "error":
+                return {
+                    "status": "error",
+                    "error": f"Failed to stop {app_id} before undeploy",
+                }
+
+        ok = self.war_deployer.undeploy_war(app_id, war_filename)
+        if not ok:
+            return {"status": "error", "error": f"Failed to remove WAR for {app_id}"}
+
+        return {"status": "undeployed", "app_id": app_id}
+
     def get_status(self, app_id: str) -> Dict[str, Any]:
         """Get the current status of a Tomcat instance.
 

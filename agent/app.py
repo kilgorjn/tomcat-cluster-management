@@ -212,6 +212,22 @@ async def deploy_tomcat(
     )
 
 
+@app.delete("/nodes/{node_id}/tomcats/{app_id}")
+async def undeploy_tomcat(
+    node_id: str,
+    app_id: str,
+    request: Request,
+) -> Dict[str, Any]:
+    """Stop a Tomcat instance and remove its WAR and expanded directory.
+
+    Optionally accepts X-War-Filename header to identify the WAR to remove.
+    """
+    _validate_node_id(node_id)
+    controller = _get_controller()
+    war_filename = request.headers.get("X-War-Filename", "app.war")
+    return await controller.undeploy(app_id, war_filename)
+
+
 @app.get("/health")
 async def health_check() -> Dict[str, str]:
     """Agent health check endpoint."""

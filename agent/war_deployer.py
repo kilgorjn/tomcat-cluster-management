@@ -161,6 +161,36 @@ class WarDeployer:
             logger.error("Failed to rollback WAR for %s: %s", app_id, exc)
             return False
 
+    def undeploy_war(self, app_id: str, war_filename: str = "app.war") -> bool:
+        """Remove the WAR and its expanded directory from webapps.
+
+        Stops Tomcat from serving the application. Backups are left intact.
+
+        Args:
+            app_id: Application identifier.
+            war_filename: Canonical WAR filename to remove.
+
+        Returns:
+            True if removed (or already absent), False on error.
+        """
+        war_filename = self._sanitize_war_filename(war_filename)
+        webapps = self._webapps_dir(app_id)
+        war_file = os.path.join(webapps, war_filename)
+        # Tomcat unpacks the WAR into a directory with the same stem
+        expanded_dir = os.path.join(webapps, Path(war_filename).stem)
+
+        try:
+            if os.path.exists(war_file):
+                os.remove(war_file)
+                logger.info("Removed WAR %s for %s", war_filename, app_id)
+            if os.path.isdir(expanded_dir):
+                shutil.rmtree(expanded_dir)
+                logger.info("Removed expanded dir %s for %s", expanded_dir, app_id)
+            return True
+        except OSError as exc:
+            logger.error("Failed to undeploy WAR for %s: %s", app_id, exc)
+            return False
+
     def get_current_war_exists(self, app_id: str) -> bool:
         """Check if a WAR file exists for an app.
 

@@ -1,0 +1,12 @@
+# node-1 runs in the tcm-node container.
+# The ip_address/hostname uses the docker-compose service name so the console
+# can reach the agent at http://tcm-node:9001.
+node_id: node-1
+hostname: tcm-node
+ip_address: tcm-node
+agent_port: 9001
+tomcats:
+  - app_id: app-a
+    instance_port: 8080
+    ajp_port: 8009
+    status: stopped

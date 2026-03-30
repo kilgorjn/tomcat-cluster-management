@@ -1,0 +1,63 @@
+services:
+
+  tcm-console:
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+    container_name: tcm-console
+    ports:
+      - "9000:9000"
+    volumes:
+      # Mount console config (clusters, nodes, applications, local-config.yaml)
+      - ./docker/console/config/local-config.yaml:/etc/tcm/local-config.yaml:ro
+      - ./docker/console/config/clusters:/etc/tcm/clusters
+      - ./docker/console/config/nodes:/etc/tcm/nodes
+      - ./docker/console/config/applications:/etc/tcm/applications
+      - tcm-console-logs:/var/log/tcm
+    networks:
+      - tcm
+    depends_on:
+      - tcm-node
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/api/clusters')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  tcm-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: tcm-node
+    ports:
+      - "9001:9001"   # TCM agent API
+      - "8080:8080"   # Tomcat MobileApp HTTP (for direct browser access / testing)
+    volumes:
+      - ./docker/agent/config/local-config.yaml:/etc/tcm/local-config.yaml:ro
+      - tcm-agent-logs:/var/log/tcm
+      # Persist the Tomcat CATALINA_BASE dirs so WARs and logs survive restarts.
+      # The MobileApp instance skeleton is built into the image; the volume overlays
+      # the webapps/ and logs/ dirs so deployed WARs persist.
+      - tcm-tomcat-MobileApp-webapps:/opt/tomcats/MobileApp/webapps
+      - tcm-tomcat-MobileApp-logs:/opt/tomcats/MobileApp/logs
+    networks:
+      - tcm
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  tcm:
+    driver: bridge
+
+volumes:
+  tcm-console-logs:
+  tcm-agent-logs:
+  tcm-tomcat-MobileApp-webapps:
+  tcm-tomcat-MobileApp-logs:
