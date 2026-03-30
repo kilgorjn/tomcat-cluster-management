@@ -58,6 +58,7 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           PKG="tcm-${VERSION}"
           mkdir -p "${PKG}"
+          mkdir -p "${PKG}/frontend"
 
           # Copy application code
           cp -r console/ "${PKG}/console/"
